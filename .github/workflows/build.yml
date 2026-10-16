@@ -16,7 +16,7 @@ jobs:
         run: swift build -c release
       - name: Find a sample photo for background removal
         run: |
-          PHOTO="$(find "/Library/User Pictures/Animals" -type f \( -iname '*.heic' -o -iname '*.tif' -o -iname '*.png' -o -iname '*.jpg' \) 2>/dev/null | head -1)"
+          PHOTO="$(find -L "/Library/User Pictures/Animals" -type f -iname "Zebra*" \( -iname '*.heic' -o -iname '*.tif' -o -iname '*.png' -o -iname '*.jpg' \) 2>/dev/null | head -1)"
           echo "Sample photo: $PHOTO"
           echo "PSX_SUBJECT_PHOTO=$PHOTO" >> "$GITHUB_ENV"
       - name: Test

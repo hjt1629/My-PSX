@@ -10,7 +10,7 @@ WORK="$(mktemp -d)/사진 테스트"
 mkdir -p "$OUT" "$WORK/하위 폴더"
 
 # macOS에 기본으로 들어 있는 사진을 테스트 폴더로 복사
-find "/Library/User Pictures/Animals" "/Library/User Pictures/Flowers" -type f \( -iname '*.heic' -o -iname '*.tif' -o -iname '*.tiff' -o -iname '*.png' -o -iname '*.jpg' \) 2>/dev/null \
+find -L "/Library/User Pictures/Animals" "/Library/User Pictures/Flowers" -type f \( -iname '*.heic' -o -iname '*.tif' -o -iname '*.tiff' -o -iname '*.png' -o -iname '*.jpg' \) 2>/dev/null \
     | head -8 | while IFS= read -r f; do cp "$f" "$WORK/"; done
 ls -la "$WORK"
 PHOTO="$(find "$WORK" -maxdepth 1 -type f | sort | head -1)"
