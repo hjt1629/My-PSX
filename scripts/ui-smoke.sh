@@ -80,8 +80,8 @@ keycode 36;                                    shot 15-after-save 3
 keycode 124;                                   shot 16-next-photo 3
 keycode 53;                                    shot 17-back-to-grid 3
 
-# 좁은 창에서도 도구 막대가 잘리지 않는지
-keycode 124;                                   sleep 2
+# 좁은 창에서도 도구 막대가 잘리지 않는지 (선택된 사진을 Return으로 열기)
+keycode 36;                                    sleep 2
 osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to set size of front window to {900, 600}" \
     || echo "⚠️ 창 크기 변경 실패"
 shot 18-narrow-window 2
