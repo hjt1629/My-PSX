@@ -162,7 +162,8 @@ final class AppFlowTests: XCTestCase {
 
     // MARK: 배경 제거 (실제 사진)
 
-    /// CI에서는 macOS에 들어 있는 동물 사진 경로를 PSX_SUBJECT_PHOTO 로 넘겨줍니다.
+    /// 배경 제거는 Neural Engine/GPU가 있는 실제 Mac에서만 동작합니다 (GitHub의 가상 머신에서는 불가).
+    /// 실행 예: PSX_SUBJECT_PHOTO="/Library/User Pictures/Animals/Zebra.heic" swift test
     @MainActor
     func testRemoveBackgroundOnRealPhoto() async throws {
         guard let path = ProcessInfo.processInfo.environment["PSX_SUBJECT_PHOTO"], !path.isEmpty else {

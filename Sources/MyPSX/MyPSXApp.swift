@@ -24,6 +24,7 @@ struct MyPSXApp: App {
                 .environmentObject(browser)
                 .frame(minWidth: 900, minHeight: 600)
         }
+        .defaultSize(width: 1200, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("폴더 열기…") { browser.chooseFolder() }

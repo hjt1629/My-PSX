@@ -42,6 +42,18 @@ open build/MyPSX.app
 ```
 만들어진 `build/MyPSX.app` 을 `응용 프로그램` 폴더로 옮기면 일반 앱처럼 쓸 수 있습니다.
 
+## 테스트
+
+```bash
+swift test
+```
+
+배경 제거 테스트는 실제 Mac에서만 동작하므로(가상 머신에는 Neural Engine이 없음) 사진 경로를 지정했을 때만 실행됩니다.
+
+```bash
+PSX_SUBJECT_PHOTO="/Library/User Pictures/Animals/Zebra.heic" swift test
+```
+
 ## 단축키
 
 | 동작 | 단축키 |

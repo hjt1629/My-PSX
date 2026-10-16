@@ -65,20 +65,28 @@ struct EditorView: View {
 
     // MARK: 도구 막대
 
+    /// 창이 좁으면 글자 없이 아이콘만 보여줍니다.
     private var toolbar: some View {
-        HStack(spacing: 6) {
-            ToolButton(title: "목록", systemImage: "square.grid.2x2") {
+        ViewThatFits(in: .horizontal) {
+            toolbarContent(showLabels: true)
+            toolbarContent(showLabels: false)
+        }
+    }
+
+    private func toolbarContent(showLabels: Bool) -> some View {
+        HStack(spacing: showLabels ? 6 : 2) {
+            ToolButton(showLabel: showLabels, title: "목록", systemImage: "square.grid.2x2") {
                 browser.requestNavigation { browser.closePhoto() }
             }
             .keyboardShortcut(editor.mode == .crop ? nil : KeyboardShortcut(.escape, modifiers: []))
 
-            ToolButton(title: "이전", systemImage: "chevron.left") {
+            ToolButton(showLabel: showLabels, title: "이전", systemImage: "chevron.left") {
                 browser.requestNavigation { browser.move(by: -1) }
             }
             .keyboardShortcut(.leftArrow, modifiers: [])
             .disabled(!browser.canMove(by: -1) || editor.mode == .crop)
 
-            ToolButton(title: "다음", systemImage: "chevron.right") {
+            ToolButton(showLabel: showLabels, title: "다음", systemImage: "chevron.right") {
                 browser.requestNavigation { browser.move(by: 1) }
             }
             .keyboardShortcut(.rightArrow, modifiers: [])
@@ -87,37 +95,37 @@ struct EditorView: View {
             divider
 
             Group {
-                ToolButton(title: "왼쪽 회전", systemImage: "rotate.left") {
+                ToolButton(showLabel: showLabels, title: "왼쪽 회전", systemImage: "rotate.left") {
                     editor.rotate(clockwise: false)
                 }
                 .keyboardShortcut("[", modifiers: .command)
 
-                ToolButton(title: "오른쪽 회전", systemImage: "rotate.right") {
+                ToolButton(showLabel: showLabels, title: "오른쪽 회전", systemImage: "rotate.right") {
                     editor.rotate(clockwise: true)
                 }
                 .keyboardShortcut("]", modifiers: .command)
 
-                ToolButton(title: "좌우 반전",
+                ToolButton(showLabel: showLabels, title: "좌우 반전",
                            systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") {
                     editor.flip(horizontal: true)
                 }
 
-                ToolButton(title: "상하 반전",
+                ToolButton(showLabel: showLabels, title: "상하 반전",
                            systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down") {
                     editor.flip(horizontal: false)
                 }
 
-                ToolButton(title: "자르기", systemImage: "crop") {
+                ToolButton(showLabel: showLabels, title: "자르기", systemImage: "crop") {
                     beginCrop()
                 }
                 .keyboardShortcut("k", modifiers: .command)
 
-                ToolButton(title: "크기 조절", systemImage: "arrow.up.left.and.arrow.down.right") {
+                ToolButton(showLabel: showLabels, title: "크기 조절", systemImage: "arrow.up.left.and.arrow.down.right") {
                     showResize = true
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
 
-                ToolButton(title: "배경 제거", systemImage: "wand.and.stars") {
+                ToolButton(showLabel: showLabels, title: "배경 제거", systemImage: "wand.and.stars") {
                     editor.removeBackground()
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
@@ -126,21 +134,21 @@ struct EditorView: View {
 
             Spacer()
 
-            ToolButton(title: "실행 취소", systemImage: "arrow.uturn.backward") { editor.undo() }
+            ToolButton(showLabel: showLabels, title: "실행 취소", systemImage: "arrow.uturn.backward") { editor.undo() }
                 .keyboardShortcut("z", modifiers: .command)
                 .disabled(!editor.canUndo || editor.mode == .crop)
 
-            ToolButton(title: "다시 실행", systemImage: "arrow.uturn.forward") { editor.redo() }
+            ToolButton(showLabel: showLabels, title: "다시 실행", systemImage: "arrow.uturn.forward") { editor.redo() }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!editor.canRedo || editor.mode == .crop)
 
             divider
 
-            ToolButton(title: "저장", systemImage: "square.and.arrow.down") { save() }
+            ToolButton(showLabel: showLabels, title: "저장", systemImage: "square.and.arrow.down") { save() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!editor.isModified || editor.isBusy || editor.mode == .crop)
 
-            ToolButton(title: "다른 이름으로", systemImage: "square.and.arrow.down.on.square") { saveAs() }
+            ToolButton(showLabel: showLabels, title: "다른 이름으로", systemImage: "square.and.arrow.down.on.square") { saveAs() }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(editor.image == nil || editor.isBusy || editor.mode == .crop)
         }
@@ -230,6 +238,8 @@ struct EditorView: View {
             Text("드래그해서 영역을 선택하세요")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .layoutPriority(-1)
 
             Spacer()
 
@@ -322,6 +332,7 @@ struct EditorView: View {
 
 /// 아이콘 + 짧은 이름으로 된 도구 버튼
 private struct ToolButton: View {
+    var showLabel = true
     let title: String
     let systemImage: String
     let action: () -> Void
@@ -332,11 +343,14 @@ private struct ToolButton: View {
                 Image(systemName: systemImage)
                     .font(.system(size: 15))
                     .frame(height: 18)
-                Text(title)
-                    .font(.system(size: 10))
-                    .lineLimit(1)
+                if showLabel {
+                    Text(title)
+                        .font(.system(size: 10))
+                        .lineLimit(1)
+                        .fixedSize()
+                }
             }
-            .frame(minWidth: 46)
+            .frame(minWidth: showLabel ? 46 : 30, minHeight: 34)
             .padding(.vertical, 2)
             .contentShape(Rectangle())
         }

@@ -53,7 +53,8 @@ BOUNDS="$(window_bounds)"
 echo "창: $BOUNDS"
 if command -v cliclick >/dev/null && [ -n "$BOUNDS" ]; then
     IFS=', ' read -r WX WY WW WH <<< "$BOUNDS"
-    SX=$((WX + 240)); SY=$((WY + 95))
+    # 사이드바 오른쪽, 도구 막대 아래의 빈 여백(사진 바깥)에서 시작
+    SX=$((WX + 240)); SY=$((WY + 130))
     EX=$((WX + 240 + (WW - 240) / 2)); EY=$((WY + WH / 2))
     cliclick "dd:$SX,$SY" "dm:$(( (SX + EX) / 2 )),$(( (SY + EY) / 2 ))" "dm:$EX,$EY" "du:$EX,$EY"
 fi
@@ -67,6 +68,8 @@ keycode 48;                                    shot 09-resize-typed
 keycode 36;                                    shot 10-resized 2
 
 key "b" "using {command down, shift down}";    shot 11-background-removed 10
+# 가상 머신에서는 배경 제거가 실패하고 오류 창이 뜹니다 → 닫기 (성공했으면 아무 일도 없음)
+keycode 36;                                    sleep 1
 
 key "z" "using command down";                  shot 12-undo
 key "z" "using {command down, shift down}";    shot 13-redo
@@ -76,6 +79,12 @@ keycode 36;                                    shot 15-after-save 3
 
 keycode 124;                                   shot 16-next-photo 3
 keycode 53;                                    shot 17-back-to-grid 3
+
+# 좁은 창에서도 도구 막대가 잘리지 않는지
+keycode 124;                                   sleep 2
+osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to set size of front window to {900, 600}" \
+    || echo "⚠️ 창 크기 변경 실패"
+shot 18-narrow-window 2
 quit_app
 
 echo "---- 저장된 파일 ----"
