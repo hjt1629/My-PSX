@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreImage
+import CoreML
 import Foundation
 import Vision
 
@@ -70,8 +71,32 @@ public enum ImageOps {
     // MARK: 배경 제거
 
     /// macOS 내장 Vision 프레임워크로 피사체만 남기고 배경을 투명하게 만듭니다.
+    /// Neural Engine/GPU를 쓸 수 없는 환경(가상 머신 등)에서는 CPU로 다시 시도합니다.
     public static func removeBackground(_ image: CGImage) throws -> CGImage {
+        do {
+            return try removeBackground(image, cpuOnly: false)
+        } catch ImageError.noForeground {
+            throw ImageError.noForeground
+        } catch {
+            do {
+                return try removeBackground(image, cpuOnly: true)
+            } catch ImageError.noForeground {
+                throw ImageError.noForeground
+            } catch {
+                throw ImageError.backgroundRemovalFailed(error.localizedDescription)
+            }
+        }
+    }
+
+    static func removeBackground(_ image: CGImage, cpuOnly: Bool) throws -> CGImage {
         let request = VNGenerateForegroundInstanceMaskRequest()
+        if cpuOnly {
+            for (stage, devices) in try request.supportedComputeStageDevices {
+                if let cpu = devices.first(where: { if case .cpu(_) = $0 { return true } else { return false } }) {
+                    request.setComputeDevice(cpu, for: stage)
+                }
+            }
+        }
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         try handler.perform([request])
 

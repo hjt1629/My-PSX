@@ -128,15 +128,22 @@ final class FolderBrowser: ObservableObject {
             case .success(let contents):
                 subfolders = contents.folders
                 photos = contents.photos
-                if let openedPhoto, !contents.photos.contains(openedPhoto) {
-                    self.openedPhoto = nil
-                }
+                // /var → /private/var 처럼 같은 파일이 다른 경로로 보일 수 있어 이름으로 맞춥니다.
+                openedPhoto = matching(openedPhoto, in: contents.photos)
+                selectedPhoto = matching(selectedPhoto, in: contents.photos)
             case .failure(let error):
                 subfolders = []
                 photos = []
                 errorMessage = "폴더를 읽을 수 없습니다.\n\(error.localizedDescription)"
             }
         }
+    }
+
+    /// 목록에서 같은 파일을 찾습니다. 없으면 nil
+    private func matching(_ url: URL?, in photos: [URL]) -> URL? {
+        guard let url else { return nil }
+        if photos.contains(url) { return url }
+        return photos.first { $0.lastPathComponent == url.lastPathComponent }
     }
 
     struct FolderContents {

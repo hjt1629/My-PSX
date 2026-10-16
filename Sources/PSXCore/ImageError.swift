@@ -6,6 +6,7 @@ public enum ImageError: LocalizedError {
     case noForeground
     case unsupportedFormat
     case writeFailed
+    case backgroundRemovalFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +15,7 @@ public enum ImageError: LocalizedError {
         case .noForeground: return "사진에서 피사체를 찾지 못했습니다."
         case .unsupportedFormat: return "지원하지 않는 파일 형식입니다."
         case .writeFailed: return "파일을 저장하지 못했습니다."
+        case .backgroundRemovalFailed(let reason): return "배경을 제거하지 못했습니다. (\(reason))"
         }
     }
 }

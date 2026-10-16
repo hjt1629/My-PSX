@@ -10,7 +10,7 @@ WORK="$(mktemp -d)/사진 테스트"
 mkdir -p "$OUT" "$WORK/하위 폴더"
 
 # macOS에 기본으로 들어 있는 사진을 테스트 폴더로 복사
-find "/Library/User Pictures" -type f \( -iname '*.heic' -o -iname '*.tif' -o -iname '*.tiff' -o -iname '*.png' -o -iname '*.jpg' \) 2>/dev/null \
+find "/Library/User Pictures/Animals" "/Library/User Pictures/Flowers" -type f \( -iname '*.heic' -o -iname '*.tif' -o -iname '*.tiff' -o -iname '*.png' -o -iname '*.jpg' \) 2>/dev/null \
     | head -8 | while IFS= read -r f; do cp "$f" "$WORK/"; done
 ls -la "$WORK"
 PHOTO="$(find "$WORK" -maxdepth 1 -type f | sort | head -1)"
@@ -26,9 +26,9 @@ launch() {
     sleep 1
 }
 quit_app() { [ -n "$PID" ] && kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; PID=""; }
-shot() { sleep "${2:-1.5}"; screencapture -x "$OUT/$1.png" && echo "📸 $1" || echo "⚠️ 스크린샷 실패: $1"; }
-key() { osascript -e "tell application \"System Events\" to keystroke \"$1\" $2" || echo "⚠️ 키 입력 실패: $1 $2"; }
-keycode() { osascript -e "tell application \"System Events\" to key code $1 $2" || echo "⚠️ 키 입력 실패: $1"; }
+shot() { sleep "${2:-1.5}"; screencapture -x -t jpg "$OUT/$1.jpg" && echo "📸 $1" || echo "⚠️ 스크린샷 실패: $1"; }
+key() { osascript -e "tell application \"System Events\" to keystroke \"$1\" ${2:-}" || echo "⚠️ 키 입력 실패: $1 ${2:-}"; }
+keycode() { osascript -e "tell application \"System Events\" to key code $1 ${2:-}" || echo "⚠️ 키 입력 실패: $1"; }
 window_bounds() {
     osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to get {position, size} of front window" 2>/dev/null
 }
