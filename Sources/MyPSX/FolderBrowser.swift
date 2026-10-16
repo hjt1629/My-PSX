@@ -1,0 +1,203 @@
+import AppKit
+import Foundation
+import PSXCore
+
+/// 현재 열린 폴더와 그 안의 하위 폴더 / 사진 목록을 관리합니다.
+@MainActor
+final class FolderBrowser: ObservableObject {
+    @Published private(set) var currentFolder: URL?
+    @Published private(set) var subfolders: [URL] = []
+    @Published private(set) var photos: [URL] = []
+    @Published private(set) var favorites: [URL] = []
+    @Published private(set) var isLoading = false
+
+    @Published var selectedPhoto: URL?
+    /// 편집 화면에 열려 있는 사진. nil이면 목록 화면을 보여줍니다.
+    @Published private(set) var openedPhoto: URL?
+
+    /// 편집 화면에 저장하지 않은 변경사항이 있는지 (편집 화면이 갱신합니다)
+    @Published var hasUnsavedEdits = false
+    /// 저장하지 않은 변경사항 때문에 확인을 기다리는 이동 동작
+    @Published var pendingNavigation: PendingNavigation?
+    @Published var errorMessage: String?
+
+    struct PendingNavigation {
+        let action: () -> Void
+    }
+
+    let standardLocations: [URL]
+
+    private var loadGeneration = 0
+    private let favoritesKey = "favoriteFolders"
+    private let lastFolderKey = "lastFolder"
+
+    init() {
+        let fileManager = FileManager.default
+        var locations = [fileManager.homeDirectoryForCurrentUser]
+        for directory in [FileManager.SearchPathDirectory.picturesDirectory, .desktopDirectory, .downloadsDirectory] {
+            if let url = fileManager.urls(for: directory, in: .userDomainMask).first {
+                locations.append(url)
+            }
+        }
+        standardLocations = locations
+
+        favorites = (UserDefaults.standard.stringArray(forKey: favoritesKey) ?? [])
+            .map { URL(fileURLWithPath: $0, isDirectory: true).normalizedFolder }
+
+        if let lastPath = UserDefaults.standard.string(forKey: lastFolderKey),
+           fileManager.fileExists(atPath: lastPath) {
+            open(folder: URL(fileURLWithPath: lastPath, isDirectory: true))
+        } else if let pictures = fileManager.urls(for: .picturesDirectory, in: .userDomainMask).first {
+            open(folder: pictures)
+        }
+    }
+
+    // MARK: 폴더 이동
+
+    func open(folder: URL) {
+        currentFolder = folder.normalizedFolder
+        openedPhoto = nil
+        selectedPhoto = nil
+        subfolders = []
+        photos = []
+        UserDefaults.standard.set(folder.path, forKey: lastFolderKey)
+        reload()
+    }
+
+    var canGoUp: Bool {
+        guard let currentFolder else { return false }
+        return currentFolder.path != "/"
+    }
+
+    func goUp() {
+        guard let currentFolder, canGoUp else { return }
+        open(folder: currentFolder.deletingLastPathComponent())
+    }
+
+    func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "열기"
+        panel.directoryURL = currentFolder
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        requestNavigation { self.open(folder: url) }
+    }
+
+    func reload() {
+        guard let folder = currentFolder else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        isLoading = true
+
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try FolderBrowser.scan(folder) }
+            }.value
+            // 그 사이 다른 폴더로 이동했다면 결과를 버립니다.
+            guard generation == loadGeneration else { return }
+            isLoading = false
+            switch result {
+            case .success(let contents):
+                subfolders = contents.folders
+                photos = contents.photos
+                if let openedPhoto, !contents.photos.contains(openedPhoto) {
+                    self.openedPhoto = nil
+                }
+            case .failure(let error):
+                subfolders = []
+                photos = []
+                errorMessage = "폴더를 읽을 수 없습니다.\n\(error.localizedDescription)"
+            }
+        }
+    }
+
+    struct FolderContents {
+        var folders: [URL]
+        var photos: [URL]
+    }
+
+    nonisolated static func scan(_ folder: URL) throws -> FolderContents {
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+        let items = try FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
+
+        var folders: [URL] = []
+        var photos: [URL] = []
+        for item in items {
+            let values = try? item.resourceValues(forKeys: Set(keys))
+            if values?.isDirectory == true && values?.isPackage != true {
+                folders.append(item)
+            } else if ImageLoader.isSupportedImage(item) {
+                photos.append(item)
+            }
+        }
+        let byName: (URL, URL) -> Bool = {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+        return FolderContents(folders: folders.sorted(by: byName), photos: photos.sorted(by: byName))
+    }
+
+    // MARK: 사진 열기
+
+    var openedPhotoIndex: Int? {
+        guard let openedPhoto else { return nil }
+        return photos.firstIndex(of: openedPhoto)
+    }
+
+    func openPhoto(_ url: URL) {
+        selectedPhoto = url
+        openedPhoto = url
+    }
+
+    func closePhoto() {
+        openedPhoto = nil
+    }
+
+    func canMove(by offset: Int) -> Bool {
+        guard let index = openedPhotoIndex else { return false }
+        return photos.indices.contains(index + offset)
+    }
+
+    func move(by offset: Int) {
+        guard let index = openedPhotoIndex, photos.indices.contains(index + offset) else { return }
+        openPhoto(photos[index + offset])
+    }
+
+    /// 저장하지 않은 편집이 있으면 사용자에게 먼저 확인합니다.
+    func requestNavigation(_ action: @escaping () -> Void) {
+        if hasUnsavedEdits {
+            pendingNavigation = PendingNavigation(action: action)
+        } else {
+            action()
+        }
+    }
+
+    // MARK: 즐겨찾기
+
+    func isFavorite(_ url: URL) -> Bool {
+        favorites.contains(url.normalizedFolder)
+    }
+
+    func toggleFavorite(_ url: URL) {
+        let url = url.normalizedFolder
+        if let index = favorites.firstIndex(of: url) {
+            favorites.remove(at: index)
+        } else {
+            favorites.append(url)
+        }
+        UserDefaults.standard.set(favorites.map(\.path), forKey: favoritesKey)
+    }
+
+    func revealInFinder(_ url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
+extension URL {
+    /// 끝의 "/" 유무 등과 상관없이 같은 폴더면 같은 값이 되도록 정규화합니다.
+    var normalizedFolder: URL {
+        URL(fileURLWithPath: standardizedFileURL.path, isDirectory: true)
+    }
+}
