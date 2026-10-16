@@ -31,7 +31,8 @@ final class FolderBrowser: ObservableObject {
     private let favoritesKey = "favoriteFolders"
     private let lastFolderKey = "lastFolder"
 
-    init() {
+    /// - Parameter launchArguments: 실행 인자. 폴더나 사진 경로가 있으면 바로 엽니다.
+    init(launchArguments: [String] = []) {
         let fileManager = FileManager.default
         var locations = [fileManager.homeDirectoryForCurrentUser]
         for directory in [FileManager.SearchPathDirectory.picturesDirectory, .desktopDirectory, .downloadsDirectory] {
@@ -44,12 +45,37 @@ final class FolderBrowser: ObservableObject {
         favorites = (UserDefaults.standard.stringArray(forKey: favoritesKey) ?? [])
             .map { URL(fileURLWithPath: $0, isDirectory: true).normalizedFolder }
 
+        if openLaunchTarget(from: launchArguments) {
+            return
+        }
         if let lastPath = UserDefaults.standard.string(forKey: lastFolderKey),
            fileManager.fileExists(atPath: lastPath) {
             open(folder: URL(fileURLWithPath: lastPath, isDirectory: true))
         } else if let pictures = fileManager.urls(for: .picturesDirectory, in: .userDomainMask).first {
             open(folder: pictures)
         }
+    }
+
+    /// 실행 인자 중 존재하는 폴더/사진 경로를 엽니다. 열었으면 true
+    private func openLaunchTarget(from arguments: [String]) -> Bool {
+        let fileManager = FileManager.default
+        for argument in arguments.dropFirst() where !argument.hasPrefix("-") {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: argument, isDirectory: &isDirectory) else { continue }
+            let url = URL(fileURLWithPath: argument).standardizedFileURL
+            if isDirectory.boolValue {
+                open(folder: url)
+                return true
+            }
+            if ImageLoader.isSupportedImage(url) {
+                let folder = url.deletingLastPathComponent().normalizedFolder
+                open(folder: folder)
+                // 폴더 목록의 URL과 같은 형태로 맞춥니다.
+                openPhoto(folder.appendingPathComponent(url.lastPathComponent))
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: 폴더 이동

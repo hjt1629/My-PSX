@@ -16,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MyPSXApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var browser = FolderBrowser()
+    @StateObject private var browser = FolderBrowser(launchArguments: CommandLine.arguments)
 
     var body: some Scene {
         WindowGroup("My PSX") {

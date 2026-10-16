@@ -12,6 +12,8 @@ let package = Package(
         .target(name: "PSXCore"),
         // SwiftUI 앱
         .executableTarget(name: "MyPSX", dependencies: ["PSXCore"]),
-        .testTarget(name: "PSXCoreTests", dependencies: ["PSXCore"])
+        .testTarget(name: "PSXCoreTests", dependencies: ["PSXCore"]),
+        // 폴더 탐색 / 편집 흐름 테스트
+        .testTarget(name: "MyPSXTests", dependencies: ["MyPSX", "PSXCore"])
     ]
 )
