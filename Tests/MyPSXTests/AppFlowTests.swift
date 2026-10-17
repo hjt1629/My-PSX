@@ -81,10 +81,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(editor.isModified)
 
         // 같은 사진을 다시 열어도 편집이 사라지지 않습니다.
-        browser.openPhoto(editor.sourceURL)
+        browser.openPhoto(editor.sourceURL, in: .cutout)
         XCTAssertTrue(browser.editor === editor)
 
-        // 다른 사진을 열면 새 편집 상태가 됩니다.
+        // 다른 사진을 열면 새 편집 상태가 되고, 지금 탭은 그대로입니다.
         browser.move(by: 1)
         XCTAssertFalse(browser.editor === editor)
         XCTAssertEqual(browser.editor?.sourceURL.lastPathComponent, "photo10.jpg")
