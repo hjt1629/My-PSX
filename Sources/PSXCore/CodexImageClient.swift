@@ -111,13 +111,13 @@ public struct CodexImageClient: AIImageEditor {
         let expected = directory.appendingPathComponent(outputName)
         if fileManager.fileExists(atPath: expected.path) { return expected }
 
-        let input = directory.appendingPathComponent(inputName).standardizedFileURL
-        if let other = newestImage(under: directory, since: started, excluding: input) { return other }
+        // 원본으로 넘긴 input.png는 결과가 아니므로 건너뜁니다.
+        if let other = newestImage(under: directory, since: started, excludingName: inputName) { return other }
         return newestImage(under: codexHome.appendingPathComponent("generated_images"),
-                           since: started.addingTimeInterval(-2), excluding: nil)
+                           since: started.addingTimeInterval(-2), excludingName: nil)
     }
 
-    private static func newestImage(under folder: URL, since started: Date, excluding: URL?) -> URL? {
+    private static func newestImage(under folder: URL, since started: Date, excludingName: String?) -> URL? {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey]
         guard let enumerator = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: keys) else {
             return nil
@@ -125,7 +125,7 @@ public struct CodexImageClient: AIImageEditor {
         var best: (url: URL, date: Date)?
         for case let url as URL in enumerator {
             guard ["png", "jpg", "jpeg", "webp"].contains(url.pathExtension.lowercased()),
-                  url.standardizedFileURL != excluding,
+                  url.lastPathComponent != excludingName,
                   let values = try? url.resourceValues(forKeys: Set(keys)),
                   values.isRegularFile == true,
                   let date = values.contentModificationDate, date >= started else { continue }
