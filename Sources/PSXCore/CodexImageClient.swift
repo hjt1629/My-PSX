@@ -54,9 +54,12 @@ public struct CodexImageClient: AIImageEditor {
                                           timeout: timeout)
         if result.timedOut { throw CodexError.timedOut }
 
+        // 작업 폴더는 곧 지워지므로 파일을 메모리로 다 읽어 들인 뒤 해독합니다.
         guard let outputURL = Self.findOutput(in: directory, codexHome: codexHome, since: started),
-              let source = CGImageSourceCreateWithURL(outputURL as CFURL, nil),
-              let output = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+              let data = try? Data(contentsOf: outputURL),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let output = CGImageSourceCreateImageAtIndex(
+                  source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else {
             throw CodexError.from(result)
         }
         return try AIResult.fit(output, to: image, keepTransparency: false)
