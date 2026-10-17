@@ -110,7 +110,7 @@ private struct EditorContent: View {
         }
     }
 
-    private var isToolActive: Bool { editor.mode == .crop || tool != nil }
+    private var isToolActive: Bool { editor.mode == .crop || tool != nil || editor.isAdjusting }
 
     // MARK: 위 막대 (✕ < > 파일 이름)
 
@@ -508,8 +508,8 @@ private struct EditorCanvas: View {
             ZStack {
                 Theme.canvas
 
-                if let image = displayedImage {
-                    let frame = fittedFrame(for: image.pixelSize, in: geo.size)
+                if let image = displayedImage, let size = layoutSize {
+                    let frame = fittedFrame(for: size, in: geo.size)
                     Group {
                         if image.hasAlpha {
                             Checkerboard()
@@ -525,9 +525,9 @@ private struct EditorCanvas: View {
                     if editor.mode == .crop && !showingOriginal {
                         CropOverlay(
                             rect: $editor.cropRect,
-                            imageSize: image.pixelSize,
+                            imageSize: size,
                             imageFrame: frame,
-                            aspect: cropAspect.ratio(for: image.pixelSize)
+                            aspect: cropAspect.ratio(for: size)
                         )
                     }
                     if showingOriginal {
@@ -565,7 +565,14 @@ private struct EditorCanvas: View {
     }
 
     private var displayedImage: CGImage? {
-        showingOriginal ? (editor.originalImage ?? editor.image) : editor.image
+        if showingOriginal { return editor.originalImage ?? editor.image }
+        return editor.previewImage ?? editor.image
+    }
+
+    /// 화면 배치는 항상 원본 크기 기준 (미리보기는 작게 줄인 이미지라서)
+    private var layoutSize: CGSize? {
+        if showingOriginal, let original = editor.originalImage { return original.pixelSize }
+        return editor.image?.pixelSize
     }
 
     private func fittedFrame(for imageSize: CGSize, in container: CGSize) -> CGRect {

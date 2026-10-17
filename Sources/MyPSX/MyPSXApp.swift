@@ -17,11 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct MyPSXApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var browser = FolderBrowser(launchArguments: CommandLine.arguments)
+    @StateObject private var gptSettings = GPTSettings()
 
     var body: some Scene {
         WindowGroup("My PSX") {
             ContentView()
                 .environmentObject(browser)
+                .environmentObject(gptSettings)
                 .frame(minWidth: 1000, minHeight: 640)
                 .preferredColorScheme(.dark)
         }
@@ -32,6 +34,13 @@ struct MyPSXApp: App {
                 Button("폴더 열기…") { browser.chooseFolder() }
                     .keyboardShortcut("o")
             }
+        }
+
+        // 앱 메뉴 → 설정… (⌘,)
+        Settings {
+            SettingsView()
+                .environmentObject(gptSettings)
+                .preferredColorScheme(.dark)
         }
     }
 }

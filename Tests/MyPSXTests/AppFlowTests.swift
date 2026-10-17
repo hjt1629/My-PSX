@@ -310,6 +310,51 @@ final class AppFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAdjustmentPreviewAndApply() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))
+        await editor.load()
+        let original = try XCTUnwrap(editor.image)
+
+        editor.updateAdjustmentPreview(ImageAdjustments(brightness: 50))
+        XCTAssertTrue(editor.isAdjusting)
+        XCTAssertFalse(editor.canEdit)
+        try await waitUntil { editor.previewImage != nil }
+        // 미리보기 중에는 원본이 그대로입니다.
+        XCTAssertTrue(editor.image === original)
+
+        // 0으로 되돌리면 미리보기가 끝납니다.
+        editor.updateAdjustmentPreview(ImageAdjustments())
+        XCTAssertFalse(editor.isAdjusting)
+        XCTAssertNil(editor.previewImage)
+
+        editor.updateAdjustmentPreview(ImageAdjustments(saturation: -100))
+        editor.applyAdjustments(ImageAdjustments(saturation: -100))
+        XCTAssertNil(editor.previewImage)
+        try await waitForIdle(editor)
+        XCTAssertFalse(editor.image === original)
+        XCTAssertEqual(editor.image?.width, original.width)
+        XCTAssertTrue(editor.isModified)
+        editor.undo()
+        XCTAssertTrue(editor.image === original)
+    }
+
+    @MainActor
+    func testGPTEditFailureShowsErrorAndKeepsImage() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))
+        await editor.load()
+        let original = try XCTUnwrap(editor.image)
+
+        // 존재하지 않는 주소로 보내 실패를 일으킵니다. (실제 OpenAI 호출 없음)
+        let client = OpenAIImageClient(apiKey: "sk-test", baseURL: URL(string: "http://127.0.0.1:9")!)
+        editor.gptEdit(client: client, prompt: "test")
+        XCTAssertTrue(editor.isBusy)
+        try await waitForIdle(editor, timeout: 30)
+        XCTAssertNotNil(editor.errorMessage)
+        XCTAssertTrue(editor.image === original)
+        XCTAssertFalse(editor.canUndo)
+    }
+
+    @MainActor
     func testCropAspectRatios() {
         let size = CGSize(width: 4000, height: 3000)
         XCTAssertNil(CropAspect.free.ratio(for: size))

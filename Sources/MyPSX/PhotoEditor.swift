@@ -20,6 +20,9 @@ final class PhotoEditor: ObservableObject {
     @Published var errorMessage: String?
 
     @Published private(set) var mode: Mode = .view
+    /// 밝기·대비·채도를 움직이는 동안 보여줄 미리보기 (작게 줄인 이미지)
+    @Published private(set) var previewImage: CGImage?
+    @Published private(set) var isAdjusting = false
     /// 자르기 영역 (픽셀 단위, 왼쪽 위 원점)
     @Published var cropRect: CGRect = .zero
 
@@ -30,6 +33,8 @@ final class PhotoEditor: ObservableObject {
 
     private let historyLimit = 30
     private var isLoading = false
+    private var previewBase: CGImage?
+    private var previewTask: Task<Void, Never>?
 
     init(url: URL) {
         sourceURL = url
@@ -41,7 +46,7 @@ final class PhotoEditor: ObservableObject {
         guard let image else { return false }
         return image !== savedImage
     }
-    var canEdit: Bool { image != nil && !isBusy && mode == .view }
+    var canEdit: Bool { image != nil && !isBusy && mode == .view && !isAdjusting }
     /// 마지막으로 저장(또는 불러온) 상태 — "원본 비교"에 사용
     var originalImage: CGImage? { savedImage }
     var hasTransparency: Bool { image?.hasAlpha ?? false }
@@ -93,6 +98,61 @@ final class PhotoEditor: ObservableObject {
     func removeBackground() {
         perform("배경 제거 중…") { try ImageOps.removeBackground($0) }
     }
+
+    // MARK: 밝기 / 대비 / 채도
+
+    /// 슬라이더를 움직일 때마다 작은 이미지로 빠르게 미리보기를 만듭니다.
+    func updateAdjustmentPreview(_ adjustments: ImageAdjustments) {
+        guard let image, !isBusy else { return }
+        guard !adjustments.isIdentity else {
+            endAdjustmentPreview()
+            return
+        }
+        isAdjusting = true
+        if previewBase == nil {
+            previewBase = (try? ImageOps.downscaled(image, maxPixelSize: 1600)) ?? image
+        }
+        guard let base = previewBase else { return }
+        previewTask?.cancel()
+        previewTask = Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                try? ImageOps.adjust(base, adjustments)
+            }.value
+            guard !Task.isCancelled, isAdjusting else { return }
+            previewImage = result
+        }
+    }
+
+    func endAdjustmentPreview() {
+        previewTask?.cancel()
+        previewTask = nil
+        previewImage = nil
+        previewBase = nil
+        isAdjusting = false
+    }
+
+    /// 원본 크기 그대로 조정을 적용합니다. (실행 취소 가능)
+    func applyAdjustments(_ adjustments: ImageAdjustments) {
+        endAdjustmentPreview()
+        guard !adjustments.isIdentity else { return }
+        perform("조정 적용 중…") { try ImageOps.adjust($0, adjustments) }
+    }
+
+    // MARK: GPT
+
+    /// OpenAI 이미지 편집으로 사진을 수정합니다.
+    func gptEdit(client: OpenAIImageClient, prompt: String, transparentBackground: Bool = false) {
+        let message = transparentBackground
+            ? "GPT가 배경을 지우는 중… (1~2분 걸릴 수 있습니다)"
+            : "GPT가 사진을 수정하는 중… (1~2분 걸릴 수 있습니다)"
+        perform(message) {
+            try await client.edit($0, prompt: prompt, transparentBackground: transparentBackground)
+        }
+    }
+
+    static let gptBackgroundRemovalPrompt =
+        "Remove the background completely and make it transparent. Keep the main subject exactly as it is: "
+        + "same shape, colors, texture, details, position and size. Do not add anything."
 
     /// 투명한 부분을 지정한 색으로 채웁니다.
     func fillBackground(_ color: CGColor) {
@@ -182,14 +242,14 @@ final class PhotoEditor: ObservableObject {
     // MARK: 내부
 
     /// 무거운 작업은 백그라운드에서 실행하고, 결과를 실행 취소 기록에 넣습니다.
-    private func perform(_ message: String, _ operation: @escaping @Sendable (CGImage) throws -> CGImage) {
+    private func perform(_ message: String, _ operation: @escaping @Sendable (CGImage) async throws -> CGImage) {
         guard let current = image, !isBusy else { return }
         isBusy = true
         busyMessage = message
         Task {
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
-                    try operation(current)
+                    try await operation(current)
                 }.value
                 undoStack.append(current)
                 if undoStack.count > historyLimit { undoStack.removeFirst() }

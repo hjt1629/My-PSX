@@ -76,6 +76,22 @@ key "a" "using command down"
 key "300" "";                                  shot 15-resize-typed
 keycode 36;                                    shot 16-resized 2
 
+# 오른쪽 패널 탭: 조정(밝기 슬라이더 끌기 → 미리보기 → Return 적용) / AI / 설정 창
+BOUNDS="$(window_bounds)"
+if command -v cliclick >/dev/null && [ -n "$BOUNDS" ]; then
+    IFS=', ' read -r WX WY WW WH <<< "$BOUNDS"
+    PX=$((WX + WW - 270))
+    cliclick "c:$((PX + 91)),$((WY + 92))";       shot 16a-adjust-panel 1
+    SLY=$((WY + 182))
+    cliclick "dd:$((PX + 135)),$SLY" "dm:$((PX + 180)),$SLY" "dm:$((PX + 215)),$SLY" "du:$((PX + 215)),$SLY"
+                                                   shot 16b-adjust-preview 2
+    keycode 36;                                    shot 16c-adjust-applied 2
+    cliclick "c:$((PX + 147)),$((WY + 92))";       shot 16d-ai-panel 1
+    cliclick "c:$((PX + 35)),$((WY + 92))"
+fi
+key "," "using command down";                  shot 16e-settings 2
+key "w" "using command down";                  sleep 1
+
 # 오려내기 탭: 배경 제거 (가상 머신에서는 실패하고 오류 창이 뜸 → 닫기)
 key "b" "using {command down, shift down}";    shot 17-cutout-removed 10
 keycode 36;                                    shot 18-cutout-panel 1
