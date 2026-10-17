@@ -18,12 +18,14 @@ struct MyPSXApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var browser = FolderBrowser(launchArguments: CommandLine.arguments)
     @StateObject private var gptSettings = GPTSettings()
+    @StateObject private var jobs = BackgroundJobs()
 
     var body: some Scene {
         WindowGroup("My PSX") {
             ContentView()
                 .environmentObject(browser)
                 .environmentObject(gptSettings)
+                .environmentObject(jobs)
                 .frame(minWidth: 1000, minHeight: 640)
                 .preferredColorScheme(.dark)
         }

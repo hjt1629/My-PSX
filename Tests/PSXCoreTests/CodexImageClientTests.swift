@@ -115,6 +115,23 @@ final class CodexImageClientTests: XCTestCase {
         XCTAssertFalse(runner.calls[1].arguments.contains("-c"))
     }
 
+    func testPrefersImageFromItsOwnThreadFolder() async throws {
+        let codexHome = root.appendingPathComponent("codex-home")
+        let runner = FakeRunner { _, _ in
+            // 다른 작업이 더 늦게 만든 이미지가 있어도 이 실행(thread-A)의 이미지를 골라야 합니다.
+            for (thread, gray) in [("thread-A", 0.9), ("thread-B", 0.1)] {
+                let folder = codexHome.appendingPathComponent("generated_images/\(thread)", isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try ImageEncoding.pngData(TestImages.solid(width: 20, height: 20, gray: gray))
+                    .write(to: folder.appendingPathComponent("ig.png"))
+            }
+            return CommandResult(status: 0, output: #"{"type":"thread.started","thread_id":"thread-A"}"#)
+        }
+        let result = try await makeClient(runner).edit(TestImages.solid(width: 20, height: 20, gray: 0.5),
+                                                       prompt: "x", transparentBackground: false)
+        XCTAssertGreaterThan(TestImages.pixel(result).0, 200)
+    }
+
     func testNotInstalled() async {
         let runner = FakeRunner { _, _ in CommandResult(status: 127, output: "zsh:1: command not found: codex") }
         await assertThrows(makeClient(runner), CodexError.notInstalled)

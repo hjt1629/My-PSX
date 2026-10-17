@@ -445,6 +445,38 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(editor.image?.hasAlpha, false)
     }
 
+    func testBackgroundJobOutputNames() throws {
+        let source = folder.appendingPathComponent("photo10.jpg")
+        XCTAssertEqual(BackgroundJobs.outputURL(for: source, hasAlpha: false).lastPathComponent, "photo10-1.jpg")
+        XCTAssertEqual(BackgroundJobs.outputURL(for: source, hasAlpha: true).lastPathComponent, "photo10-1.png")
+        try Data().write(to: folder.appendingPathComponent("photo10-1.jpg"))
+        XCTAssertEqual(BackgroundJobs.outputURL(for: source, hasAlpha: false).lastPathComponent, "photo10-2.jpg")
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("photo10-1.jpg"))
+    }
+
+    @MainActor
+    func testBackgroundJobSavesNextToOriginalWhileEditorStaysFree() async throws {
+        let jobs = BackgroundJobs()
+        var saved: URL?
+        jobs.onSaved = { saved = $0 }
+        let source = folder.appendingPathComponent("photo2.png")
+        let image = try ImageLoader.loadFullImage(source)
+
+        jobs.removeBackground(source: source, image: image, ai: FakeAIEditor(), transparent: false, sharpen: 30)
+        XCTAssertTrue(jobs.isRunning(source))
+        // 같은 사진을 또 맡기면 무시
+        jobs.removeBackground(source: source, image: image, ai: FakeAIEditor(), transparent: false, sharpen: 30)
+        XCTAssertEqual(jobs.jobs.count, 1)
+
+        for _ in 0..<200 where saved == nil { try await Task.sleep(for: .milliseconds(20)) }
+        let url = try XCTUnwrap(saved)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(url.lastPathComponent, "photo2-1.png")
+        XCTAssertEqual(url.deletingLastPathComponent().resolvingSymlinksInPath(), folder.resolvingSymlinksInPath())
+        XCTAssertFalse(jobs.isRunning(source))
+        XCTAssertEqual(try ImageLoader.loadFullImage(url).width, image.width)
+    }
+
     @MainActor
     func testAIBackgroundRemovalTransparentUsesProviderWhenSupported() async throws {
         let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))

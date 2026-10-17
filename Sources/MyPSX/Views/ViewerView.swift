@@ -415,6 +415,7 @@ private struct SortMenu: View {
 
 private struct ThumbnailGrid: View {
     @EnvironmentObject private var browser: FolderBrowser
+    @EnvironmentObject private var jobs: BackgroundJobs
     @AppStorage("thumbnailSize") private var thumbnailSize: Double = 150
     /// 한 줄에 들어가는 칸 수 (↑ / ↓ 이동에 사용)
     @State private var columns = 1
@@ -477,7 +478,8 @@ private struct ThumbnailGrid: View {
                                 }
                         }
                         ForEach(browser.photos, id: \.self) { photo in
-                            PhotoTile(url: photo, size: size, isSelected: browser.selectedPhoto == photo)
+                            PhotoTile(url: photo, size: size, isSelected: browser.selectedPhoto == photo,
+                                      isProcessing: jobs.isRunning(photo))
                                 .id(photo)
                                 .onTapGesture(count: 2) {
                                     browser.preview(photo)
@@ -585,6 +587,7 @@ private struct PhotoTile: View {
     let url: URL
     let size: CGFloat
     let isSelected: Bool
+    var isProcessing = false
     @State private var hovering = false
 
     var body: some View {
@@ -593,6 +596,9 @@ private struct PhotoTile: View {
                 .frame(width: size, height: size)
                 .overlay(alignment: .bottom) {
                     if isSelected { PixelSizeBadge(url: url) }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isProcessing { ProcessingBadge() }
                 }
             Text(url.lastPathComponent)
                 .font(.system(size: 11))
@@ -748,6 +754,18 @@ private struct PhotoPreview: View {
         }
         .opacity(0)
         .allowsHitTesting(false)
+    }
+}
+
+/// 뒤에서 배경 제거 중인 사진의 썸네일 오른쪽 위 표시
+struct ProcessingBadge: View {
+    var body: some View {
+        ProgressView()
+            .controlSize(.small)
+            .padding(4)
+            .background(Circle().fill(Color.black.opacity(0.65)))
+            .padding(3)
+            .help("배경 제거 중")
     }
 }
 

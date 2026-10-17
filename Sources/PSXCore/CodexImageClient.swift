@@ -61,7 +61,12 @@ public struct CodexImageClient: AIImageEditor {
         if result.timedOut { throw CodexError.timedOut }
 
         // 작업 폴더는 곧 지워지므로 파일을 메모리로 다 읽어 들인 뒤 해독합니다.
+        // 여러 장을 동시에 돌려도 섞이지 않도록: 출력의 저장 경로 → 이 실행(thread)의 폴더 → 그 밖의 새 이미지
         let outputURL = Self.savedPath(in: result.output)
+            ?? Self.threadID(in: result.output).flatMap {
+                Self.newestImage(under: codexHome.appendingPathComponent("generated_images/\($0)"),
+                                 since: started.addingTimeInterval(-2), excludingName: nil)
+            }
             ?? Self.findOutput(in: directory, codexHome: codexHome, since: started)
         guard let outputURL,
               let data = try? Data(contentsOf: outputURL),
@@ -133,6 +138,11 @@ public struct CodexImageClient: AIImageEditor {
         return nil
     }
 
+    /// `--json` 출력의 thread_id (이미지 도구가 이 이름의 폴더에 저장)
+    static func threadID(in output: String) -> String? {
+        output.firstMatch(of: #/"thread_id"\s*:\s*"([^"]+)"/#).map { String($0.1) }
+    }
+
     /// 모델이 reasoning effort 값을 받지 않아 실패했는지
     static func rejectedReasoningEffort(_ output: String) -> Bool {
         let lower = output.lowercased()
@@ -159,7 +169,7 @@ public struct CodexImageClient: AIImageEditor {
                            since: started.addingTimeInterval(-2), excludingName: nil)
     }
 
-    private static func newestImage(under folder: URL, since started: Date, excludingName: String?) -> URL? {
+    static func newestImage(under folder: URL, since started: Date, excludingName: String?) -> URL? {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey]
         guard let enumerator = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: keys) else {
             return nil

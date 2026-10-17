@@ -57,6 +57,7 @@ private struct EditorContent: View {
     @AppStorage("cutoutLargestOnly") private var cutoutLargestOnly = true
     @AppStorage("cutoutSharpen") private var cutoutSharpen = 30.0
     @EnvironmentObject private var gpt: GPTSettings
+    @EnvironmentObject private var jobs: BackgroundJobs
     @AppStorage("rightPanelWidth") private var rightWidth: Double = 270
     @StateObject private var zoom = CanvasZoom()
 
@@ -171,6 +172,16 @@ private struct EditorContent: View {
             }
             if let timing = editor.lastTiming {
                 Text("· \(timing)").monospacedDigit().lineLimit(1)
+                    .foregroundStyle(Theme.accent)
+            }
+            if jobs.runningCount > 0 {
+                Label("배경 제거 중 \(jobs.runningCount)장", systemImage: "hourglass")
+                    .lineLimit(1)
+                    .foregroundStyle(Theme.accent)
+            } else if let job = jobs.lastFinished, case .saved(let url) = job.status {
+                Text("· \(url.lastPathComponent) 저장\(job.seconds.map { " · \($0)초" } ?? "")")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                     .foregroundStyle(Theme.accent)
             }
 
@@ -361,7 +372,10 @@ private struct EditorContent: View {
     private func removeBackgroundQuickly() {
         browser.tab = .cutout
         if gpt.isReady, let ai = gpt.makeEditor() {
-            editor.aiRemoveBackground(ai, transparent: cutoutTransparent, sharpen: cutoutSharpen)
+            if let image = editor.image {
+                jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai,
+                                      transparent: cutoutTransparent, sharpen: cutoutSharpen)
+            }
         } else {
             editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
         }
@@ -467,6 +481,7 @@ private struct EditorBrowserPane: View {
 /// 현재 폴더의 사진 썸네일. 누르면 그 사진을 편집합니다.
 private struct EditorThumbnails: View {
     @EnvironmentObject private var browser: FolderBrowser
+    @EnvironmentObject private var jobs: BackgroundJobs
 
     var body: some View {
         Group {
@@ -480,7 +495,8 @@ private struct EditorThumbnails: View {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 6)], spacing: 6) {
                             ForEach(browser.photos, id: \.self) { url in
-                                EditorThumbnailCell(url: url, isOpen: url == browser.openedPhoto)
+                                EditorThumbnailCell(url: url, isOpen: url == browser.openedPhoto,
+                                                    isProcessing: jobs.isRunning(url))
                                     .id(url)
                                     .onTapGesture { open(url) }
                             }
@@ -514,6 +530,7 @@ private struct EditorThumbnails: View {
 private struct EditorThumbnailCell: View {
     let url: URL
     let isOpen: Bool
+    var isProcessing = false
 
     var body: some View {
         // 고른 사진은 포토스케이프 X처럼 파란 칸 + 크기 표시 + 파일 이름
@@ -522,6 +539,9 @@ private struct EditorThumbnailCell: View {
                 .frame(width: 66, height: isOpen ? 50 : 66)
                 .overlay(alignment: .bottom) {
                     if isOpen { PixelSizeBadge(url: url) }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isProcessing { ProcessingBadge() }
                 }
             if isOpen {
                 Text(url.lastPathComponent)

@@ -638,6 +638,7 @@ private struct AdjustSlider: View {
 
 private struct AIEditPanel: View {
     @EnvironmentObject private var gpt: GPTSettings
+    @EnvironmentObject private var jobs: BackgroundJobs
     @ObservedObject var editor: PhotoEditor
     @State private var prompt = ""
     @AppStorage("cutoutTransparent") private var transparent = false
@@ -689,8 +690,9 @@ private struct AIEditPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             // 기본 기능: 글을 쓰지 않고 한 번에 상품만 남기기
             Button {
-                guard let ai = gpt.makeEditor() else { return }
-                editor.aiRemoveBackground(ai, transparent: transparent, sharpen: sharpen)
+                guard let ai = gpt.makeEditor(), let image = editor.image else { return }
+                jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai,
+                                      transparent: transparent, sharpen: sharpen)
             } label: {
                 VStack(spacing: 2) {
                     Label("빠른 배경 제거 (상품만 남기기)", systemImage: "bolt.fill")
@@ -703,8 +705,8 @@ private struct AIEditPanel: View {
                 .padding(.vertical, 8)
             }
             .buttonStyle(DarkButtonStyle(prominent: true))
-            .disabled(!editor.canEdit)
-            .help("⇧⌘B · 투명/흰색은 오려내기 탭의 '투명 배경으로' 체크박스를 따릅니다")
+            .disabled(!editor.canEdit || jobs.isRunning(editor.sourceURL))
+            .help("⇧⌘B · 끝나면 같은 폴더에 '원래이름-1'로 저장합니다. 투명/흰색은 오려내기 탭의 '투명 배경으로' 체크박스를 따릅니다")
 
             Text("직접 지시하기")
                 .font(.system(size: 11, weight: .semibold))
@@ -781,6 +783,7 @@ private struct AIEditPanel: View {
 
 struct CutOutPanel: View {
     @EnvironmentObject private var gpt: GPTSettings
+    @EnvironmentObject private var jobs: BackgroundJobs
     @ObservedObject var editor: PhotoEditor
     let saveAsPNG: () -> Void
 
@@ -838,13 +841,16 @@ struct CutOutPanel: View {
 
                 // 기본: GPT(Codex 또는 API)가 상품만 남기고 나머지를 흰색/투명으로 — 맥 AI는 쓰지 않음
                 Button {
-                    guard let ai = gpt.makeEditor() else { return }
-                    editor.aiRemoveBackground(ai, transparent: transparent, sharpen: sharpen)
+                    guard let ai = gpt.makeEditor(), let image = editor.image else { return }
+                    jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai,
+                                          transparent: transparent, sharpen: sharpen)
                 } label: {
                     VStack(spacing: 2) {
                         Label("빠른 배경 제거", systemImage: "bolt.fill")
                             .font(.system(size: 13, weight: .semibold))
-                        Text(gpt.provider == .higgsfield ? "Higgsfield 배경 제거 모델" : "GPT가 상품만 남기고 나머지를 정리합니다")
+                        Text(jobs.isRunning(editor.sourceURL)
+                             ? "이 사진 처리 중… 다른 사진을 골라 계속 작업하세요"
+                             : "끝나면 같은 폴더에 '\(editor.sourceURL.deletingPathExtension().lastPathComponent)-1'로 저장")
                             .font(.system(size: 10))
                             .opacity(0.8)
                     }
@@ -852,7 +858,7 @@ struct CutOutPanel: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(DarkButtonStyle(prominent: true))
-                .disabled(!editor.canEdit || !gpt.isReady)
+                .disabled(!editor.canEdit || !gpt.isReady || jobs.isRunning(editor.sourceURL))
                 .padding(.horizontal, 12)
                 .help("⇧⌘B · 사진이 OpenAI로 전송됩니다.")
 

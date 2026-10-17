@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var browser: FolderBrowser
+    @EnvironmentObject private var jobs: BackgroundJobs
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,6 +49,24 @@ struct ContentView: View {
             Button("확인") {}
         } message: {
             Text(browser.errorMessage ?? "")
+        }
+        .alert(
+            "배경 제거 실패",
+            isPresented: Binding(
+                get: { jobs.errorMessage != nil },
+                set: { if !$0 { jobs.errorMessage = nil } }
+            )
+        ) {
+            Button("확인") {}
+        } message: {
+            Text(jobs.errorMessage ?? "")
+        }
+        .onAppear {
+            // 뒤에서 끝난 배경 제거 결과가 바로 썸네일 목록에 나타나도록
+            jobs.onSaved = { [weak browser] url in
+                ThumbnailLoader.shared.invalidate(url)
+                browser?.reload()
+            }
         }
     }
 }
