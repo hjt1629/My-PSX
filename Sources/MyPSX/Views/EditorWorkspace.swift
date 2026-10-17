@@ -52,6 +52,7 @@ private struct EditorContent: View {
     @State private var showingOriginal = false
     @State private var confirmOverwrite = false
     @AppStorage("cutoutTransparent") private var cutoutTransparent = false
+    @EnvironmentObject private var gpt: GPTSettings
 
     var body: some View {
         HStack(spacing: 0) {
@@ -275,6 +276,12 @@ private struct EditorContent: View {
                     editor.removeBackground(transparent: cutoutTransparent)
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
+                Button("") {
+                    guard let ai = gpt.makeEditor() else { return }
+                    browser.tab = .cutout
+                    editor.aiRemoveBackground(ai, transparent: cutoutTransparent)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .option])
             }
             .disabled(!editor.canEdit || tool != nil)
         }

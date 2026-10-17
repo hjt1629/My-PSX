@@ -366,6 +366,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertNil(editor.errorMessage)
         XCTAssertEqual(ai.prompts, [AIPrompts.whiteBackground])
         XCTAssertEqual(ai.transparentFlags, [false])
+        // 기본 지시문: 상품만 남기고 아이콘·글자·배경을 흰색으로
+        for word in ["product", "icons", "text", "background", "white"] {
+            XCTAssertTrue(AIPrompts.whiteBackground.contains(word), word)
+        }
         XCTAssertFalse(editor.image === original)
         XCTAssertEqual(editor.image?.hasAlpha, false)
     }

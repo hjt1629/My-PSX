@@ -12,17 +12,22 @@ public protocol AIImageEditor: Sendable {
 }
 
 public enum AIPrompts {
-    /// 배경을 깨끗한 흰색으로 바꾸는 지시문
-    public static let whiteBackground =
-        "Replace the background with a clean, solid, pure white (#FFFFFF) background. "
-        + "Keep the main subject exactly as it is: same shape, colors, texture, details, position and size. "
-        + "Do not add shadows, text, borders or anything else."
+    /// 상품만 남기는 규칙. 상품 위에 인쇄된 글자·로고는 상품의 일부라 그대로 둡니다.
+    static let keepProductOnly =
+        "This is a product photo. Keep ONLY the main product, exactly as it is: same shape, colors, "
+        + "texture, details, position and size, including any text, labels or logos printed on the product itself. "
+        + "Remove everything that is not part of the product: the background, icons, badges, stickers, "
+        + "captions, overlaid text, prices, watermarks, logos and graphics placed around or over the photo, "
+        + "props, decorations and other objects. "
 
-    /// 배경을 투명하게 지우는 지시문
-    public static let transparentBackground =
-        "Remove the background completely and make it transparent. "
-        + "Keep the main subject exactly as it is: same shape, colors, texture, details, position and size. "
-        + "Do not add anything."
+    /// 상품만 남기고 나머지를 전부 흰색으로 — GPT 배경 제거의 기본 동작
+    public static let whiteBackground = keepProductOnly
+        + "Fill every removed area with a clean, solid, pure white (#FFFFFF). "
+        + "Do not add shadows, reflections, text, borders or anything else."
+
+    /// 상품만 남기고 나머지를 투명하게
+    public static let transparentBackground = keepProductOnly
+        + "Make every removed area fully transparent. Do not add anything."
 }
 
 enum AIResult {

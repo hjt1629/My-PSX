@@ -487,9 +487,10 @@ private struct AIEditPanel: View {
     @EnvironmentObject private var gpt: GPTSettings
     @ObservedObject var editor: PhotoEditor
     @State private var prompt = ""
+    @AppStorage("cutoutTransparent") private var transparent = false
 
     private let examples = [
-        "배경을 깔끔한 흰색으로 바꿔줘",
+        "상품만 남기고 배경을 연회색으로 바꿔줘",
         "조명을 밝고 자연스럽게 보정해줘",
         "제품 사진처럼 그림자를 부드럽게 넣어줘",
         "사진 속 먼지와 잡티를 지워줘"
@@ -532,6 +533,30 @@ private struct AIEditPanel: View {
 
     private var promptEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // 기본 기능: 글을 쓰지 않고 한 번에 상품만 남기기
+            Button {
+                guard let ai = gpt.makeEditor() else { return }
+                editor.aiRemoveBackground(ai, transparent: transparent)
+            } label: {
+                VStack(spacing: 2) {
+                    Label("GPT 배경 제거 (상품만 남기기)", systemImage: "sparkles")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(transparent ? "상품 외 전부 투명하게" : "상품 외 배경·아이콘·글자를 모두 흰색으로")
+                        .font(.system(size: 10))
+                        .opacity(0.8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(DarkButtonStyle(prominent: true))
+            .disabled(!editor.canEdit)
+            .help("⌥⌘B · 투명/흰색은 오려내기 탭의 '투명 배경으로' 체크박스를 따릅니다")
+
+            Text("직접 지시하기")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.secondaryText)
+                .padding(.top, 4)
+
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $prompt)
                     .font(.system(size: 12))
@@ -569,12 +594,13 @@ private struct AIEditPanel: View {
                 guard let ai = gpt.makeEditor() else { return }
                 editor.aiEdit(ai, prompt: prompt)
             } label: {
-                Label("GPT로 수정하기", systemImage: "sparkles")
-                    .font(.system(size: 13, weight: .semibold))
+                Label("GPT로 수정하기", systemImage: "wand.and.rays")
+                    .font(.system(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
             }
-            .buttonStyle(DarkButtonStyle(prominent: true))
+            .buttonStyle(DarkButtonStyle())
             .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !editor.canEdit)
 
             Text(footnote)
@@ -610,7 +636,7 @@ struct CutOutPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 PanelHeader(title: "오려내기 (배경 제거)")
-                Text("사진 속 사람·동물·물체만 남기고 배경을 흰색으로 바꿉니다.")
+                Text("상품만 남기고 배경·아이콘·글자 등 나머지를 모두 흰색으로 바꿉니다.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -632,33 +658,18 @@ struct CutOutPanel: View {
                 .padding(.bottom, 12)
 
                 Button {
-                    editor.removeBackground(transparent: transparent)
+                    guard let ai = gpt.makeEditor() else { return }
+                    editor.aiRemoveBackground(ai, transparent: transparent)
                 } label: {
-                    Label("자동 배경 제거 (macOS)", systemImage: "wand.and.stars")
+                    Label("GPT 배경 제거 (상품만 남기기)", systemImage: "sparkles")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                 }
                 .buttonStyle(DarkButtonStyle(prominent: true))
-                .disabled(!editor.canEdit)
-                .padding(.horizontal, 12)
-                .help("macOS 내장 기능으로 배경 제거 (⇧⌘B). 무료, 인터넷 연결 필요 없음")
-
-                Button {
-                    guard let ai = gpt.makeEditor() else { return }
-                    editor.aiRemoveBackground(ai, transparent: transparent)
-                } label: {
-                    Label("GPT로 배경 제거", systemImage: "sparkles")
-                        .font(.system(size: 12))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
-                }
-                .buttonStyle(DarkButtonStyle())
                 .disabled(!editor.canEdit || !gpt.isReady)
                 .padding(.horizontal, 12)
-                .padding(.top, 6)
-                .help("GPT로 배경을 정리합니다. 사진이 OpenAI로 전송됩니다.")
+                .help("GPT가 상품만 남기고 나머지를 흰색으로 정리합니다 (⌥⌘B). 사진이 OpenAI로 전송됩니다.")
 
                 Text(gptNote)
                     .font(.system(size: 10))
@@ -666,6 +677,22 @@ struct CutOutPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
                     .padding(.top, 4)
+
+                Button {
+                    editor.removeBackground(transparent: transparent)
+                } label: {
+                    Label("자동 배경 제거 (macOS)", systemImage: "wand.and.stars")
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+                }
+                .buttonStyle(DarkButtonStyle())
+                .disabled(!editor.canEdit)
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 4)
+                .help("macOS 내장 기능으로 배경만 제거 (⇧⌘B). 무료, 인터넷 연결 필요 없음. 글자·아이콘은 남을 수 있습니다")
 
                 PanelHeader(title: "배경 채우기")
                 Text(editor.hasTransparency
