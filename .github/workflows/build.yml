@@ -20,10 +20,14 @@ jobs:
         run: ./scripts/build-app.sh
         env:
           BUILD: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Zip .app
+        # GitHub 아티팩트는 실행 권한을 지우므로, 권한을 보존하는 ditto로 먼저 묶습니다.
+        # 받은 뒤 MyPSX.zip을 더블클릭하면 바로 실행할 수 있는 MyPSX.app이 나옵니다.
+        run: ditto -c -k --keepParent build/MyPSX.app build/MyPSX.zip
       - uses: actions/upload-artifact@v4
         with:
           name: MyPSX-app
-          path: build/*.app
+          path: build/MyPSX.zip
 
   ui-smoke:
     # 실제 앱을 띄워 조작하고 스크린샷을 남깁니다.
