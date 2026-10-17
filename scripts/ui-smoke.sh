@@ -68,6 +68,17 @@ if command -v cliclick >/dev/null && [ -n "$BOUNDS" ]; then
     cliclick "dd:$SX,$SY" "dm:$(( (SX + EX) / 2 )),$(( (SY + EY) / 2 ))" "dm:$EX,$EY" "du:$EX,$EY"
 fi
 shot 12-crop-dragged
+# 선택 영역을 클립보드로 복사(⌘B) → 클립보드에 그림이 있어야 함
+key "b" "using command down";                  sleep 1
+echo "클립보드: $(osascript -e 'clipboard info' 2>&1)"
+shot 12b-crop-copied 0.5
+# 확대(⌘=) 두 번 → 맞춤(⌘0)
+key "=" "using command down"
+key "=" "using command down";                  shot 12c-crop-zoomed 1
+key "0" "using command down"
+# 선택 영역 저장(⌘A) → 저장 창(사진 폴더가 기본) → 취소
+key "a" "using command down";                  shot 12d-save-selection-panel 2
+keycode 53;                                    sleep 1
 keycode 36;                                    shot 13-crop-applied 2
 
 # 크기 조절 (오른쪽 패널) — 너비 칸에 300 입력

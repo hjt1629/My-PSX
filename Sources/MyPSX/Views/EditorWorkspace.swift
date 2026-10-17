@@ -57,13 +57,14 @@ private struct EditorContent: View {
     @AppStorage("cutoutLargestOnly") private var cutoutLargestOnly = true
     @EnvironmentObject private var gpt: GPTSettings
     @AppStorage("rightPanelWidth") private var rightWidth: Double = 270
+    @StateObject private var zoom = CanvasZoom()
 
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 topBar
                 PanelDivider(vertical: false)
-                EditorCanvas(editor: editor, cropAspect: cropAspect, showingOriginal: showingOriginal)
+                EditorCanvas(editor: editor, zoom: zoom, cropAspect: cropAspect, showingOriginal: showingOriginal)
                 PanelDivider(vertical: false)
                 bottomBar
             }
@@ -288,6 +289,15 @@ private struct EditorContent: View {
                 .keyboardShortcut("b", modifiers: [.command, .option])
             }
             .disabled(!editor.canEdit || tool != nil)
+            // 확대 / 축소는 자르기 중에도 됩니다.
+            Group {
+                Button("") { zoom.zoom(by: 1.25) }
+                    .keyboardShortcut("=", modifiers: .command)
+                Button("") { zoom.zoom(by: 0.8) }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button("") { zoom.reset() }
+                    .keyboardShortcut("0", modifiers: .command)
+            }
         }
         .opacity(0)
         .allowsHitTesting(false)
@@ -534,6 +544,7 @@ private struct EditorThumbnailCell: View {
 
 private struct EditorCanvas: View {
     @ObservedObject var editor: PhotoEditor
+    @ObservedObject var zoom: CanvasZoom
     let cropAspect: CropAspect
     let showingOriginal: Bool
 
@@ -543,14 +554,17 @@ private struct EditorCanvas: View {
                 Theme.canvas
 
                 if let image = displayedImage, let size = layoutSize {
-                    let frame = fittedFrame(for: size, in: geo.size)
+                    let fitted = fittedFrame(for: size, in: geo.size)
+                    let frame = zoom.frame(fitted: fitted)
+                    let pixelScale = frame.width / size.width
                     Group {
                         if image.hasAlpha {
                             Checkerboard()
                         }
                         Image(decorative: image, scale: 1)
                             .resizable()
-                            .interpolation(.high)
+                            // 크게 확대하면 픽셀이 또렷하게 보이도록
+                            .interpolation(pixelScale >= 3 ? .none : .high)
                     }
                     .frame(width: frame.width, height: frame.height)
                     .position(x: frame.midX, y: frame.midY)
@@ -563,6 +577,20 @@ private struct EditorCanvas: View {
                             imageFrame: frame,
                             aspect: cropAspect.ratio(for: size)
                         )
+                    }
+                    if zoom.isZoomed {
+                        Button { zoom.reset() } label: {
+                            Text("\(Int((pixelScale * 100).rounded()))% · 맞춤")
+                                .font(.system(size: 11, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Color.black.opacity(0.6)))
+                        }
+                        .buttonStyle(.plain)
+                        .help("화면에 맞춤 (⌘0)")
+                        .position(x: geo.size.width - 60, y: geo.size.height - 20)
                     }
                     if showingOriginal {
                         Text("원본")
@@ -595,7 +623,40 @@ private struct EditorCanvas: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.75)))
                 }
             }
+            .clipped()
+            .background {
+                // 트랙패드: 핀치 = 확대/축소, 두 손가락 스크롤 = 이동 / 마우스 휠, ⌘+스크롤 = 확대/축소
+                CanvasEventCatcher(
+                    onMagnify: { magnification, point in
+                        prepareZoom(in: geo.size)
+                        zoom.zoom(by: 1 + magnification, anchor: point)
+                    },
+                    onScroll: { event, point in
+                        prepareZoom(in: geo.size)
+                        if event.modifierFlags.contains(.command) || !event.hasPreciseScrollingDeltas {
+                            let step: CGFloat = event.hasPreciseScrollingDeltas ? 0.01 : 0.1
+                            zoom.zoom(by: exp(event.scrollingDeltaY * step), anchor: point)
+                            return true
+                        }
+                        guard zoom.scale > 1 else { return false }
+                        zoom.pan(by: CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY))
+                        return true
+                    }
+                )
+            }
+            .onAppear { prepareZoom(in: geo.size) }
+            .onChange(of: geo.size) { _, size in prepareZoom(in: size) }
+            .onChange(of: layoutSize) { _, _ in
+                zoom.reset()
+                prepareZoom(in: geo.size)
+            }
         }
+    }
+
+    /// 확대 계산에 필요한 지금의 캔버스 / 맞춤 크기
+    private func prepareZoom(in viewport: CGSize) {
+        zoom.viewport = viewport
+        zoom.fittedSize = layoutSize.map { fittedFrame(for: $0, in: viewport).size } ?? .zero
     }
 
     private var displayedImage: CGImage? {

@@ -225,8 +225,41 @@ private struct PanelActions: View {
 // MARK: - 자르기
 
 private struct CropPanel: View {
+    @EnvironmentObject private var browser: FolderBrowser
     @ObservedObject var editor: PhotoEditor
     @Binding var cropAspect: CropAspect
+    @State private var copied = false
+
+    /// 선택 영역을 새 파일로 저장. 기본 위치는 사진이 있는 폴더입니다.
+    private func saveSelection() {
+        guard let image = editor.image else { return }
+        let source = editor.sourceURL
+        let original = source.pathExtension.lowercased()
+        let fileExtension = image.hasAlpha ? "png"
+            : (ImageExporter.canWrite(fileExtension: original) ? original : "jpg")
+        let panel = NSSavePanel()
+        panel.directoryURL = source.deletingLastPathComponent()
+        panel.nameFieldStringValue = "\(source.deletingPathExtension().lastPathComponent)_선택.\(fileExtension)"
+        panel.allowedContentTypes = [.png, .jpeg, .heic, .tiff]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.message = "선택한 영역만 새 파일로 저장합니다. 편집 중인 사진은 그대로입니다."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            if await editor.saveSelection(to: url) {
+                ThumbnailLoader.shared.invalidate(url)
+                browser.reload()
+            }
+        }
+    }
+
+    private func flashCopied() {
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -264,6 +297,35 @@ private struct CropPanel: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
                 .padding(.horizontal, 14)
+                .padding(.bottom, 10)
+
+            // 사진은 그대로 두고 선택 영역만 내보내기
+            VStack(spacing: 6) {
+                Button(action: saveSelection) {
+                    Label("선택 영역 저장… (⌘A)", systemImage: "square.and.arrow.down")
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+                }
+                .buttonStyle(DarkButtonStyle())
+                .keyboardShortcut("a", modifiers: .command)
+
+                Button {
+                    if editor.copySelectionToClipboard() { flashCopied() }
+                } label: {
+                    Label(copied ? "복사했습니다" : "클립보드에 복사 (⌘B)",
+                          systemImage: copied ? "checkmark" : "doc.on.clipboard")
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+                }
+                .buttonStyle(DarkButtonStyle())
+                .keyboardShortcut("b", modifiers: .command)
+            }
+            .disabled(editor.cropRect.width < 1 || editor.cropRect.height < 1)
+            .padding(.horizontal, 12)
 
             Spacer()
             PanelActions(applyTitle: "자르기 적용",

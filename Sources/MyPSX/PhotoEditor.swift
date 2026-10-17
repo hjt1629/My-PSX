@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import PSXCore
@@ -225,6 +226,46 @@ final class PhotoEditor: ObservableObject {
 
     func cancelCrop() {
         mode = .view
+    }
+
+    /// 자르기 선택 영역만 잘라 낸 이미지. 편집 중인 사진은 그대로 둡니다.
+    func selectionImage() throws -> CGImage {
+        guard let image, cropRect.width >= 1, cropRect.height >= 1 else { throw ImageError.renderFailed }
+        return try ImageOps.crop(image, to: cropRect)
+    }
+
+    /// 선택 영역만 새 파일로 저장합니다. (원본 사진의 메타데이터를 이어받음)
+    func saveSelection(to url: URL) async -> Bool {
+        let source = sourceURL
+        do {
+            let selection = try selectionImage()
+            try await Task.detached(priority: .userInitiated) {
+                try ImageExporter.write(selection, to: url, metadataFrom: source)
+            }.value
+            return true
+        } catch {
+            errorMessage = "선택 영역을 저장하지 못했습니다.\n\(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// 선택 영역을 클립보드에 복사합니다. (PNG + TIFF)
+    @discardableResult
+    func copySelectionToClipboard() -> Bool {
+        do {
+            let selection = try selectionImage()
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            let png = try ImageEncoding.pngData(selection)
+            pasteboard.setData(png, forType: .png)
+            if let tiff = NSBitmapImageRep(cgImage: selection).tiffRepresentation {
+                pasteboard.setData(tiff, forType: .tiff)
+            }
+            return true
+        } catch {
+            errorMessage = "클립보드에 복사하지 못했습니다.\n\(error.localizedDescription)"
+            return false
+        }
     }
 
     // MARK: 실행 취소

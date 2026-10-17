@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import XCTest
@@ -307,6 +308,59 @@ final class AppFlowTests: XCTestCase {
         try await waitForIdle(editor)
         XCTAssertEqual(editor.image?.hasAlpha, false)
         XCTAssertFalse(editor.hasTransparency)
+    }
+
+    @MainActor
+    func testSaveAndCopyCropSelectionKeepsPhoto() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo10.jpg"))
+        await editor.load()
+        let original = try XCTUnwrap(editor.image)
+        editor.beginCrop(aspect: nil)
+        editor.cropRect = CGRect(x: 5, y: 2, width: 12, height: 8)
+
+        let url = folder.appendingPathComponent("photo10_선택.png")
+        let saved = await editor.saveSelection(to: url)
+        XCTAssertTrue(saved)
+        let written = try ImageLoader.loadFullImage(url)
+        XCTAssertEqual(written.width, 12)
+        XCTAssertEqual(written.height, 8)
+
+        XCTAssertTrue(editor.copySelectionToClipboard())
+        XCTAssertNotNil(NSPasteboard.general.data(forType: .png))
+
+        // 편집 중인 사진과 자르기 상태는 그대로
+        XCTAssertTrue(editor.image === original)
+        XCTAssertEqual(editor.mode, .crop)
+        XCTAssertFalse(editor.isModified)
+    }
+
+    @MainActor
+    func testCanvasZoomKeepsPointUnderCursor() {
+        let zoom = CanvasZoom()
+        zoom.viewport = CGSize(width: 1000, height: 800)
+        zoom.fittedSize = CGSize(width: 500, height: 400)
+        let fitted = CGRect(x: 250, y: 200, width: 500, height: 400)
+
+        // 사진 오른쪽 아래 1/4 지점을 기준으로 4배
+        let anchor = CGPoint(x: 625, y: 500)
+        zoom.zoom(by: 4, anchor: anchor)
+        XCTAssertEqual(zoom.scale, 4)
+        let frame = zoom.frame(fitted: fitted)
+        XCTAssertEqual(frame.width, 2000)
+        XCTAssertEqual((anchor.x - frame.minX) / frame.width, 0.75, accuracy: 0.001)
+        XCTAssertEqual((anchor.y - frame.minY) / frame.height, 0.75, accuracy: 0.001)
+
+        // 너무 멀리 끌어도 사진이 화면 밖으로 사라지지 않음
+        zoom.pan(by: CGSize(width: 5000, height: 0))
+        XCTAssertEqual(zoom.offset.width, 540)   // (2000 - 1000) / 2 + 여유 40
+        zoom.reset()
+        XCTAssertFalse(zoom.isZoomed)
+
+        // 맞춤 크기에서는 이동하지 않음, 최대 배율 제한
+        zoom.pan(by: CGSize(width: 100, height: 100))
+        XCTAssertEqual(zoom.offset, .zero)
+        zoom.zoom(by: 1000)
+        XCTAssertEqual(zoom.scale, CanvasZoom.range.upperBound)
     }
 
     @MainActor
