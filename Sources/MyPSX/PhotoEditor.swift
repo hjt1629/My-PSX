@@ -156,9 +156,12 @@ final class PhotoEditor: ObservableObject {
     }
 
     /// AI로 배경을 정리합니다. 기본은 흰색 배경, transparent면 투명 배경.
-    func aiRemoveBackground(_ ai: any AIImageEditor, transparent: Bool) {
+    /// sharpen(0~100): 끝난 뒤 맥에서 선명하게 하는 정도. AI에게 맡기지 않아 상품 모양은 그대로입니다.
+    func aiRemoveBackground(_ ai: any AIImageEditor, transparent: Bool, sharpen: Double = 0) {
         perform("배경을 정리하는 중… (\(ai.displayName))") { image in
-            try await ai.removeBackground(image, transparent: transparent)
+            let result = try await ai.removeBackground(image, transparent: transparent)
+            guard sharpen > 0 else { return result }
+            return try ImageOps.adjust(result, ImageAdjustments(sharpness: min(sharpen, 100)))
         }
     }
 

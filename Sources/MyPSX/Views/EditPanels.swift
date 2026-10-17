@@ -641,6 +641,7 @@ private struct AIEditPanel: View {
     @ObservedObject var editor: PhotoEditor
     @State private var prompt = ""
     @AppStorage("cutoutTransparent") private var transparent = false
+    @AppStorage("cutoutSharpen") private var sharpen = 30.0
 
     private let examples = [
         "상품만 남기고 배경을 연회색으로 바꿔줘",
@@ -689,7 +690,7 @@ private struct AIEditPanel: View {
             // 기본 기능: 글을 쓰지 않고 한 번에 상품만 남기기
             Button {
                 guard let ai = gpt.makeEditor() else { return }
-                editor.aiRemoveBackground(ai, transparent: transparent)
+                editor.aiRemoveBackground(ai, transparent: transparent, sharpen: sharpen)
             } label: {
                 VStack(spacing: 2) {
                     Label("빠른 배경 제거 (상품만 남기기)", systemImage: "bolt.fill")
@@ -787,6 +788,8 @@ struct CutOutPanel: View {
     /// 꺼져 있으면 흰색 배경, 켜면 투명 배경
     @AppStorage("cutoutTransparent") private var transparent = false
     @AppStorage("cutoutLargestOnly") private var largestOnly = true
+    /// 배경 제거 뒤 선명하게 (0~100, 기본 30)
+    @AppStorage("cutoutSharpen") private var sharpen = 30.0
 
     var body: some View {
         ScrollView {
@@ -813,10 +816,30 @@ struct CutOutPanel: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 12)
 
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("끝난 뒤 선명하게")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.text)
+                        Spacer()
+                        Text(sharpen == 0 ? "끔" : "\(Int(sharpen))%")
+                            .font(.system(size: 11, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(sharpen == 0 ? Theme.secondaryText : Theme.accent)
+                    }
+                    Slider(value: Binding(get: { sharpen }, set: { sharpen = ($0 / 5).rounded() * 5 }), in: 0...100)
+                        .controlSize(.mini)
+                    Text("AI가 아니라 맥에서 처리해 상품 모양은 바뀌지 않습니다")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+
                 // 기본: GPT(Codex 또는 API)가 상품만 남기고 나머지를 흰색/투명으로 — 맥 AI는 쓰지 않음
                 Button {
                     guard let ai = gpt.makeEditor() else { return }
-                    editor.aiRemoveBackground(ai, transparent: transparent)
+                    editor.aiRemoveBackground(ai, transparent: transparent, sharpen: sharpen)
                 } label: {
                     VStack(spacing: 2) {
                         Label("빠른 배경 제거", systemImage: "bolt.fill")

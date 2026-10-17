@@ -55,6 +55,7 @@ private struct EditorContent: View {
     @State private var confirmOverwrite = false
     @AppStorage("cutoutTransparent") private var cutoutTransparent = false
     @AppStorage("cutoutLargestOnly") private var cutoutLargestOnly = true
+    @AppStorage("cutoutSharpen") private var cutoutSharpen = 30.0
     @EnvironmentObject private var gpt: GPTSettings
     @AppStorage("rightPanelWidth") private var rightWidth: Double = 270
     @StateObject private var zoom = CanvasZoom()
@@ -360,7 +361,7 @@ private struct EditorContent: View {
     private func removeBackgroundQuickly() {
         browser.tab = .cutout
         if gpt.isReady, let ai = gpt.makeEditor() {
-            editor.aiRemoveBackground(ai, transparent: cutoutTransparent)
+            editor.aiRemoveBackground(ai, transparent: cutoutTransparent, sharpen: cutoutSharpen)
         } else {
             editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
         }

@@ -32,6 +32,8 @@ public enum AIPrompts {
     static let keepProductOnly =
         "This is a product photo. Keep ONLY the main product, exactly as it is: same shape, colors, "
         + "texture, details, position and size, including any text, labels or logos printed on the product itself. "
+        + "Do not redraw, retouch, reshape, resize, recolor, relight, sharpen or smooth the product in any way; "
+        + "its edges, stitching, texture and every detail must stay identical to the original photo. "
         + "Remove everything that is not part of the product: the background, icons, badges, stickers, "
         + "captions, overlaid text, prices, watermarks, logos and graphics placed around or over the photo, "
         + "props, decorations and other objects. "

@@ -429,6 +429,23 @@ final class AppFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAIBackgroundRemovalSharpensAfterwardsWithoutTouchingThePrompt() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))
+        await editor.load()
+        let ai = FakeAIEditor()
+
+        editor.aiRemoveBackground(ai, transparent: false, sharpen: 30)
+        try await waitForIdle(editor)
+        XCTAssertNil(editor.errorMessage)
+        // 선명하게는 맥에서 처리하고, AI에는 상품을 건드리지 말라고만 합니다.
+        XCTAssertEqual(ai.prompts, [AIPrompts.whiteBackground])
+        XCTAssertTrue(AIPrompts.whiteBackground.contains("Do not redraw"))
+        XCTAssertFalse(AIPrompts.whiteBackground.lowercased().contains("make it sharper"))
+        XCTAssertEqual(editor.image?.width, 30)
+        XCTAssertEqual(editor.image?.hasAlpha, false)
+    }
+
+    @MainActor
     func testAIBackgroundRemovalTransparentUsesProviderWhenSupported() async throws {
         let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))
         await editor.load()
