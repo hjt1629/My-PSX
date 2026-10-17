@@ -114,55 +114,79 @@ private struct EditorContent: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             if let image = editor.image {
-                Text("\(image.width) × \(image.height)").monospacedDigit()
+                Text("\(image.width) × \(image.height)").monospacedDigit().lineLimit(1)
             }
             if let index = browser.openedPhotoIndex {
-                Text("· \(index + 1) / \(browser.photos.count)").monospacedDigit()
+                Text("· \(index + 1) / \(browser.photos.count)").monospacedDigit().lineLimit(1)
             }
             if editor.isModified {
-                Text("· 수정됨").foregroundStyle(.orange)
+                Text("· 수정됨").foregroundStyle(.orange).lineLimit(1)
             }
 
             Spacer(minLength: 12)
 
-            // 누르고 있는 동안 편집 전 사진을 보여줍니다.
-            Label("원본 비교", systemImage: "square.split.2x1")
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(showingOriginal ? Theme.accent.opacity(0.55) : Theme.raised)
-                )
-                .foregroundStyle(Theme.text)
-                .opacity(editor.isModified ? 1 : 0.4)
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in if editor.isModified { showingOriginal = true } }
-                        .onEnded { _ in showingOriginal = false }
-                )
-                .help("누르고 있으면 편집 전 사진을 보여줍니다")
-
-            barDivider
-
-            BarButton(title: "되돌리기", systemImage: "arrow.uturn.backward") { editor.undo() }
-                .disabled(!editor.canUndo || isToolActive)
-            BarButton(title: "다시하기", systemImage: "arrow.uturn.forward") { editor.redo() }
-                .disabled(!editor.canRedo || isToolActive)
-            BarButton(title: "원래대로", systemImage: "clock.arrow.circlepath") { editor.revertToSaved() }
-                .disabled(!editor.isModified || editor.isBusy || isToolActive)
-
-            barDivider
-
-            BarButton(title: "다른 이름으로", systemImage: "square.and.arrow.down.on.square") { saveAs() }
-                .disabled(editor.image == nil || editor.isBusy || isToolActive)
-            BarButton(title: "저장", systemImage: "square.and.arrow.down", prominent: true) { save() }
-                .disabled(!editor.isModified || editor.isBusy || isToolActive)
+            // 좁은 창에서는 글자 없이 아이콘만 보여줍니다.
+            ViewThatFits(in: .horizontal) {
+                barActions(showLabels: true)
+                barActions(showLabels: false)
+            }
+            .layoutPriority(1)
         }
         .font(.system(size: 11))
         .foregroundStyle(Theme.secondaryText)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Theme.panel)
+    }
+
+    private func barActions(showLabels: Bool) -> some View {
+        HStack(spacing: 6) {
+            // 누르고 있는 동안 편집 전 사진을 보여줍니다.
+            Group {
+                if showLabels {
+                    Label("원본 비교", systemImage: "square.split.2x1")
+                } else {
+                    Image(systemName: "square.split.2x1")
+                }
+            }
+            .fixedSize()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(showingOriginal ? Theme.accent.opacity(0.55) : Theme.raised)
+            )
+            .foregroundStyle(Theme.text)
+            .opacity(editor.isModified ? 1 : 0.4)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in if editor.isModified { showingOriginal = true } }
+                    .onEnded { _ in showingOriginal = false }
+            )
+            .help("누르고 있으면 편집 전 사진을 보여줍니다")
+
+            barDivider
+
+            BarButton(title: "되돌리기", systemImage: "arrow.uturn.backward", showLabel: showLabels) { editor.undo() }
+                .disabled(!editor.canUndo || isToolActive)
+            BarButton(title: "다시하기", systemImage: "arrow.uturn.forward", showLabel: showLabels) { editor.redo() }
+                .disabled(!editor.canRedo || isToolActive)
+            BarButton(title: "원래대로", systemImage: "clock.arrow.circlepath", showLabel: showLabels) {
+                editor.revertToSaved()
+            }
+            .disabled(!editor.isModified || editor.isBusy || isToolActive)
+
+            barDivider
+
+            BarButton(title: "다른 이름으로", systemImage: "square.and.arrow.down.on.square", showLabel: showLabels) {
+                saveAs()
+            }
+            .disabled(editor.image == nil || editor.isBusy || isToolActive)
+            BarButton(title: "저장", systemImage: "square.and.arrow.down", showLabel: showLabels, prominent: true) {
+                save()
+            }
+            .disabled(!editor.isModified || editor.isBusy || isToolActive)
+        }
     }
 
     private var barDivider: some View {
@@ -285,13 +309,21 @@ private struct EditorContent: View {
 private struct BarButton: View {
     let title: String
     let systemImage: String
+    var showLabel = true
     var prominent = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            Group {
+                if showLabel {
+                    Label(title, systemImage: systemImage)
+                } else {
+                    Image(systemName: systemImage)
+                }
+            }
                 .font(.system(size: 11, weight: prominent ? .semibold : .regular))
+                .fixedSize()
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
         }
