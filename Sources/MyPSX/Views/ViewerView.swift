@@ -153,7 +153,7 @@ private struct FolderTreeRow: View {
                     .font(.system(size: 12))
                     .foregroundStyle(isCurrent ? Color.white : iconColor)
                     .frame(width: 16)
-                Text(depth == 0 ? url.displayName : url.lastPathComponent)
+                Text(url.displayName)
                     .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -297,7 +297,7 @@ private struct Breadcrumb: View {
                         } else if isLast {
                             Image(systemName: "folder.fill").foregroundStyle(Theme.folder)
                         }
-                        Text(url.path == "/" || url == home ? url.displayName : url.lastPathComponent)
+                        Text(url.displayName)
                             .lineLimit(1)
                     }
                     .font(.system(size: 12, weight: isLast ? .semibold : .regular))
