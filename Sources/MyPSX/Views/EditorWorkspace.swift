@@ -380,12 +380,14 @@ private struct EditorBrowserPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // 위아래 경계를 끌어서 트리와 썸네일 영역의 크기를 바꿀 수 있습니다.
             VSplitView {
                 FolderTreePane(showsOpenButton: false)
-                    .frame(minHeight: 120, idealHeight: 360, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 120, idealHeight: 360, maxHeight: .infinity)
                 EditorThumbnails()
-                    .frame(minHeight: 120, idealHeight: 300, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 120, idealHeight: 300, maxHeight: .infinity)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             PanelDivider(vertical: false)
             HStack(spacing: 2) {
                 favoriteButton
