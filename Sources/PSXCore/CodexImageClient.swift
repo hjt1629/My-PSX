@@ -141,6 +141,44 @@ public struct CodexImageClient: AIImageEditor {
     }
 }
 
+// MARK: - 상품 번호 고르기 (GPT 빠른 배경 제거)
+
+extension CodexImageClient: AIProductPicker {
+    static let overlayName = "objects.jpg"
+    static let answerName = "answer.txt"
+
+    /// 이미지를 만들지 않고 글 한 줄만 받으므로 이미지 수정보다 훨씬 빠릅니다.
+    public func pickProduct(in overlay: CGImage, labels: [Int]) async throws -> [Int] {
+        let fileManager = FileManager.default
+        let directory = workRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        try ImageEncoding.jpegData(overlay).write(to: directory.appendingPathComponent(Self.overlayName))
+
+        let result = try await runner.run(Self.pickArguments(directory: directory, labels: labels),
+                                          in: directory, environment: Self.environment(), timeout: 180)
+        if result.timedOut { throw CodexError.timedOut }
+        // -o 로 받은 마지막 답변 파일을 먼저 보고, 없으면 출력 전체에서 찾습니다.
+        let answer = (try? String(contentsOf: directory.appendingPathComponent(Self.answerName), encoding: .utf8))
+            ?? result.output
+        let picked = ProductPickPrompt.parseLabels(answer, valid: labels)
+        if picked.isEmpty && result.status != 0 { throw CodexError.from(result) }
+        return picked
+    }
+
+    static func pickArguments(directory: URL, labels: [Int]) -> [String] {
+        ["codex", "exec",
+         "--skip-git-repo-check",
+         "--sandbox", "read-only",
+         // 짧게 생각하게 해서 응답을 빠르게
+         "-c", "model_reasoning_effort=\"low\"",
+         "--image", directory.appendingPathComponent(overlayName).path,
+         "-o", directory.appendingPathComponent(answerName).path,
+         "-C", directory.path,
+         ProductPickPrompt.text(labels: labels) + "\nDo not run any commands or edit files; just answer."]
+    }
+}
+
 public enum CodexError: LocalizedError, Equatable {
     case notInstalled
     case notLoggedIn(String)

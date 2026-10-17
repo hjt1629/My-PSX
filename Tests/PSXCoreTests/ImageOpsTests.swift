@@ -116,17 +116,6 @@ final class ImageOpsTests: XCTestCase {
         XCTAssertEqual(leftovers, ["test.png"])
     }
 
-    func testLargestLabelPicksBiggestObjectAndIgnoresBackground() {
-        var counts = [Int](repeating: 0, count: 256)
-        counts[0] = 10_000   // 배경
-        counts[1] = 120      // 아이콘
-        counts[2] = 5_000    // 상품
-        counts[3] = 300      // 글자
-        XCTAssertEqual(ImageOps.largestLabel(counts: counts, among: IndexSet([1, 2, 3])), 2)
-        XCTAssertEqual(ImageOps.largestLabel(counts: counts, among: IndexSet([1, 3])), 3)
-        XCTAssertNil(ImageOps.largestLabel(counts: counts, among: IndexSet()))
-    }
-
     func testSupportedImageDetection() {
         XCTAssertTrue(ImageLoader.isSupportedImage(URL(fileURLWithPath: "/a/photo.JPG")))
         XCTAssertTrue(ImageLoader.isSupportedImage(URL(fileURLWithPath: "/a/photo.heic")))

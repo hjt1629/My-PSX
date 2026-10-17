@@ -142,7 +142,19 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("이미지 모델")
+            Text("이미지 모델 (GPT 정밀 제거 · GPT로 수정)")
+        }
+
+        Section {
+            TextField(text: $settings.pickerModel, prompt: Text(OpenAIProductPicker.defaultModel)) {
+                Text("모델")
+            }
+            .textFieldStyle(.roundedBorder)
+            Text("GPT 빠른 배경 제거에서 '어느 것이 상품인지'만 판단하는 모델입니다. 작은 모델일수록 빠르고 저렴합니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text("판단 모델 (GPT 빠른 배경 제거)")
         }
     }
 

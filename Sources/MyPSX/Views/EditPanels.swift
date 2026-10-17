@@ -626,11 +626,11 @@ private struct AIEditPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             // 기본 기능: 글을 쓰지 않고 한 번에 상품만 남기기
             Button {
-                guard let ai = gpt.makeEditor() else { return }
-                editor.aiRemoveBackground(ai, transparent: transparent)
+                guard let picker = gpt.makePicker() else { return }
+                editor.quickAIRemoveBackground(picker, transparent: transparent)
             } label: {
                 VStack(spacing: 2) {
-                    Label("GPT 배경 제거 (상품만 남기기)", systemImage: "sparkles")
+                    Label("GPT 빠른 배경 제거 (상품만 남기기)", systemImage: "bolt.fill")
                         .font(.system(size: 13, weight: .semibold))
                     Text(transparent ? "상품 외 전부 투명하게" : "상품 외 배경·아이콘·글자를 모두 흰색으로")
                         .font(.system(size: 10))
@@ -641,7 +641,7 @@ private struct AIEditPanel: View {
             }
             .buttonStyle(DarkButtonStyle(prominent: true))
             .disabled(!editor.canEdit)
-            .help("⌥⌘B · 투명/흰색은 오려내기 탭의 '투명 배경으로' 체크박스를 따릅니다")
+            .help("⇧⌘B · 투명/흰색은 오려내기 탭의 '투명 배경으로' 체크박스를 따릅니다")
 
             Text("직접 지시하기")
                 .font(.system(size: 11, weight: .semibold))
@@ -728,7 +728,7 @@ struct CutOutPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 PanelHeader(title: "오려내기 (배경 제거)")
-                Text("상품만 남기고 배경·아이콘·글자 등 나머지를 모두 흰색으로 바꿉니다.")
+                Text("상품만 남기고 배경·아이콘·글자·소품을 모두 흰색으로 바꿉니다.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -749,28 +749,15 @@ struct CutOutPanel: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 12)
 
-                Toggle(isOn: $largestOnly) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("가장 큰 물체(상품)만 남기기")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.text)
-                        Text(largestOnly ? "작은 아이콘·글자·소품은 지웁니다" : "찾은 물체를 모두 남깁니다 (여러 상품 사진)")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Theme.secondaryText)
-                    }
-                }
-                .toggleStyle(.checkbox)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
-
-                // 기본: macOS 내장 기능 — 1초 안팎, 무료, 오프라인
+                // 기본: GPT가 상품만 고르고 macOS가 오림 — 몇 초
                 Button {
-                    editor.removeBackground(transparent: transparent, largestOnly: largestOnly)
+                    guard let picker = gpt.makePicker() else { return }
+                    editor.quickAIRemoveBackground(picker, transparent: transparent)
                 } label: {
                     VStack(spacing: 2) {
-                        Label("빠른 배경 제거", systemImage: "bolt.fill")
+                        Label("GPT 빠른 배경 제거", systemImage: "bolt.fill")
                             .font(.system(size: 13, weight: .semibold))
-                        Text("1초 안팎 · 무료 · 인터넷 불필요")
+                        Text("GPT가 상품을 고르고 맥이 오립니다 · 상품은 원본 그대로")
                             .font(.system(size: 10))
                             .opacity(0.8)
                     }
@@ -778,16 +765,48 @@ struct CutOutPanel: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(DarkButtonStyle(prominent: true))
+                .disabled(!editor.canEdit || !gpt.isReady)
+                .padding(.horizontal, 12)
+                .help("⇧⌘B · 사진을 새로 그리지 않아 빠릅니다. 번호를 표시한 작은 사진이 OpenAI로 전송됩니다.")
+
+                Text(gptNote)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+
+                PanelHeader(title: "다른 방법")
+                // GPT 없이: macOS만
+                Button {
+                    editor.removeBackground(transparent: transparent, largestOnly: largestOnly)
+                } label: {
+                    Label("맥 AI만 (무료 · 오프라인 · 1초)", systemImage: "wand.and.stars")
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+                }
+                .buttonStyle(DarkButtonStyle())
                 .disabled(!editor.canEdit)
                 .padding(.horizontal, 12)
-                .help("macOS 내장 기능으로 배경을 지웁니다 (⇧⌘B)")
+                .help("GPT 없이 macOS 내장 기능으로 배경을 지웁니다")
 
-                // 어려운 사진용: GPT — 느리지만 상품 위에 겹친 글자·아이콘까지 정리
+                Toggle(isOn: $largestOnly) {
+                    Text("가장 큰 물체만 남기기 (맥 AI만 쓸 때)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.text)
+                }
+                .toggleStyle(.checkbox)
+                .padding(.horizontal, 14)
+                .padding(.top, 4)
+
+                // 어려운 사진용: GPT 이미지 생성 — 상품 위에 겹친 글자까지 지움
                 Button {
                     guard let ai = gpt.makeEditor() else { return }
                     editor.aiRemoveBackground(ai, transparent: transparent)
                 } label: {
-                    Label("GPT로 정밀 제거 (상품만 남기기)", systemImage: "sparkles")
+                    Label("GPT 정밀 제거 (사진 새로 그림 · 1~2분)", systemImage: "sparkles")
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -796,16 +815,9 @@ struct CutOutPanel: View {
                 .buttonStyle(DarkButtonStyle())
                 .disabled(!editor.canEdit || !gpt.isReady)
                 .padding(.horizontal, 12)
-                .padding(.top, 6)
-                .help("GPT가 상품만 남기고 배경·아이콘·글자를 흰색으로 정리합니다 (⌥⌘B). 사진이 OpenAI로 전송됩니다.")
-
-                Text("빠른 제거로 글자·아이콘이 남으면 GPT 정밀 제거를 쓰세요. " + gptNote)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 4)
-                    .padding(.bottom, 4)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+                .help("⌥⌘B · 상품 위에 겹친 글자·아이콘까지 지워야 할 때. GPT가 사진을 새로 그립니다.")
 
                 PanelHeader(title: "배경 채우기")
                 Text(editor.hasTransparency
@@ -862,13 +874,12 @@ struct CutOutPanel: View {
     }
 
     private var gptNote: String {
-        if !gpt.isReady { return "GPT로 배경 제거: 설정(⌘,)에서 연결 방식을 고르면 쓸 수 있습니다." }
+        if !gpt.isReady { return "설정(⌘,)에서 GPT 연결 방식을 고르면 쓸 수 있습니다." }
         switch gpt.provider {
         case .codex:
-            return "ChatGPT 구독(Codex CLI)으로 처리합니다. 1~2분 걸리고 구독 사용량을 씁니다."
-                + (transparent ? " 투명 배경은 흰 배경으로 정리한 뒤 macOS 기능으로 지웁니다." : "")
+            return "ChatGPT 구독(Codex CLI)으로 판단합니다. Codex 실행 시간 때문에 10~20초쯤 걸립니다. API 키 방식이 더 빠릅니다."
         case .apiKey:
-            return "OpenAI API(\(gpt.model))로 처리합니다. 1~2분 걸리고 사용량만큼 요금이 나갑니다."
+            return "OpenAI API(\(gpt.pickerModel))로 판단합니다. 보통 몇 초, 사진당 아주 적은 요금이 나갑니다."
         }
     }
 

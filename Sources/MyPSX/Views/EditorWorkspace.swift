@@ -73,8 +73,7 @@ private struct EditorContent: View {
                     CutOutPanel(editor: editor, saveAsPNG: { saveAs(forcePNG: true) })
                 } else {
                     EditPanel(editor: editor, cropAspect: $cropAspect, tool: $tool) {
-                        browser.tab = .cutout
-                        editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
+                        removeBackgroundQuickly()
                     }
                 }
             }
@@ -275,11 +274,8 @@ private struct EditorContent: View {
                     .keyboardShortcut("k", modifiers: .command)
                 Button("") { browser.tab = .editor; tool = .resize }
                     .keyboardShortcut("i", modifiers: [.command, .option])
-                Button("") {
-                    browser.tab = .cutout
-                    editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
-                }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
+                Button("") { removeBackgroundQuickly() }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("") {
                     guard let ai = gpt.makeEditor() else { return }
                     browser.tab = .cutout
@@ -345,6 +341,16 @@ private struct EditorContent: View {
         panel.message = "투명 배경을 유지하려면 PNG로 저장하세요."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         save(to: url)
+    }
+
+    /// ⇧⌘B: GPT를 쓸 수 있으면 GPT 빠른 배경 제거, 아니면 맥 AI만으로
+    private func removeBackgroundQuickly() {
+        browser.tab = .cutout
+        if gpt.isReady, let picker = gpt.makePicker() {
+            editor.quickAIRemoveBackground(picker, transparent: cutoutTransparent)
+        } else {
+            editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
+        }
     }
 
     private func save(to url: URL) {
