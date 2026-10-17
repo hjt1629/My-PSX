@@ -30,6 +30,9 @@ struct MyPSXApp: App {
         .defaultSize(width: 1280, height: 820)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("업데이트…") { Updater.run() }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("폴더 열기…") { browser.chooseFolder() }
                     .keyboardShortcut("o")

@@ -62,6 +62,19 @@ Swift + SwiftUI로 만든 네이티브 앱이라 빠르고 가볍습니다.
 - 맥 AI로 제거 (⌥⌘B, 무료·오프라인·1초) — "가장 큰 물체만 남기기"로 작은 아이콘·글자·소품 제거. 테두리가 거칠 수 있음
 - 투명한 배경을 원하는 색으로 채우기
 
+## 맥북에 설치 / 업데이트
+
+터미널에서 처음 한 번만:
+
+```bash
+xcode-select --install   # Command Line Tools (이미 있으면 건너뜀)
+git clone -b claude/photo-viewer-editor https://github.com/hjt1629/My-PSX.git ~/My-PSX
+~/My-PSX/scripts/install.sh
+```
+
+최신 코드를 받아 앱을 만들고 `/Applications/MyPSX.app`에 설치한 뒤 실행합니다. 맥에서 직접 만든 앱이라 보안 경고가 뜨지 않습니다.
+이후에는 앱 메뉴 **My PSX → 업데이트…** 를 누르면 같은 일을 하고 앱이 다시 켜집니다. (기록: `~/Library/Logs/MyPSX-update.log`)
+
 ## 요구 사항
 
 - macOS 14 (Sonoma) 이상
