@@ -97,6 +97,90 @@ final class AppFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testBackForwardHistory() async throws {
+        let browser = FolderBrowser(launchArguments: ["MyPSX", folder.path])
+        let root = try XCTUnwrap(browser.currentFolder)
+        let sub = folder.appendingPathComponent("하위 폴더")
+        XCTAssertFalse(browser.canGoBack)
+
+        browser.open(folder: sub)
+        XCTAssertTrue(browser.canGoBack)
+        XCTAssertFalse(browser.canGoForward)
+
+        browser.goBack()
+        XCTAssertEqual(browser.currentFolder, root)
+        XCTAssertTrue(browser.canGoForward)
+
+        browser.goForward()
+        XCTAssertEqual(browser.currentFolder?.lastPathComponent, "하위 폴더")
+
+        // 같은 폴더를 다시 열면 기록이 늘지 않습니다.
+        let depth = browser.backStack.count
+        browser.open(folder: sub)
+        XCTAssertEqual(browser.backStack.count, depth)
+
+        // 새로 이동하면 앞으로 기록은 지워집니다.
+        browser.goBack()
+        browser.goUp()
+        XCTAssertFalse(browser.canGoForward)
+    }
+
+    @MainActor
+    func testSelectionAndPreview() async throws {
+        let browser = FolderBrowser(launchArguments: ["MyPSX", folder.path])
+        try await waitUntil { !browser.isLoading && browser.photos.count == 2 }
+
+        // 선택이 없을 때 방향키는 첫 사진을 고릅니다.
+        browser.moveSelection(by: 1)
+        XCTAssertEqual(browser.selectedPhoto?.lastPathComponent, "photo2.png")
+        browser.moveSelection(by: 5)
+        XCTAssertEqual(browser.selectedPhoto?.lastPathComponent, "photo10.jpg")
+        browser.moveSelection(by: -5)
+        XCTAssertEqual(browser.selectedPhoto?.lastPathComponent, "photo2.png")
+
+        // 크게 보기 중에는 넘기면 크게 보는 사진도 바뀝니다.
+        browser.preview(try XCTUnwrap(browser.selectedPhoto))
+        browser.moveSelection(by: 1)
+        XCTAssertEqual(browser.previewPhoto?.lastPathComponent, "photo10.jpg")
+        XCTAssertEqual(browser.tab, .viewer)
+        browser.closePreview()
+        XCTAssertNil(browser.previewPhoto)
+
+        // 다른 폴더로 가면 크게 보기가 닫힙니다.
+        browser.preview(try XCTUnwrap(browser.selectedPhoto))
+        browser.open(folder: folder.appendingPathComponent("하위 폴더"))
+        XCTAssertNil(browser.previewPhoto)
+    }
+
+    func testSorting() {
+        let a = URL(fileURLWithPath: "/x/b.png")
+        let b = URL(fileURLWithPath: "/x/a10.jpg")
+        let c = URL(fileURLWithPath: "/x/a2.heic")
+        let now = Date()
+        let info: [URL: FolderBrowser.FileInfo] = [
+            a: .init(modified: now, size: 300),
+            b: .init(modified: now.addingTimeInterval(-100), size: 100),
+            c: .init(modified: now.addingTimeInterval(-50), size: 200)
+        ]
+        func names(_ sort: PhotoSort, _ ascending: Bool = true) -> [String] {
+            FolderBrowser.sorted([a, b, c], info: info, by: sort, ascending: ascending).map(\.lastPathComponent)
+        }
+        XCTAssertEqual(names(.name), ["a2.heic", "a10.jpg", "b.png"])
+        XCTAssertEqual(names(.name, false), ["b.png", "a10.jpg", "a2.heic"])
+        XCTAssertEqual(names(.date), ["a10.jpg", "a2.heic", "b.png"])
+        XCTAssertEqual(names(.size, false), ["b.png", "a2.heic", "a10.jpg"])
+        XCTAssertEqual(names(.type), ["a2.heic", "a10.jpg", "b.png"])
+    }
+
+    func testFolderContainment() {
+        let parent = URL(fileURLWithPath: "/Users/me/Pictures", isDirectory: true)
+        XCTAssertTrue(parent.contains(URL(fileURLWithPath: "/Users/me/Pictures/2024/trip")))
+        XCTAssertTrue(parent.contains(parent))
+        XCTAssertFalse(parent.contains(URL(fileURLWithPath: "/Users/me/Pictures2")))
+        XCTAssertTrue(URL(fileURLWithPath: "/").contains(parent))
+    }
+
+    @MainActor
     func testUnsavedEditsAskBeforeNavigating() {
         let browser = FolderBrowser(launchArguments: ["MyPSX", folder.path])
         var navigated = false

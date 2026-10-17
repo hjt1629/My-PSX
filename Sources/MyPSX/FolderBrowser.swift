@@ -13,6 +13,28 @@ final class FolderBrowser: ObservableObject {
     @Published private(set) var isLoading = false
 
     @Published var selectedPhoto: URL?
+    /// 뷰어에서 크게 보고 있는 사진 (nil이면 썸네일 목록)
+    @Published private(set) var previewPhoto: URL?
+
+    /// 뒤로 / 앞으로 이동 기록
+    @Published private(set) var backStack: [URL] = []
+    @Published private(set) var forwardStack: [URL] = []
+
+    /// 사진 정렬 기준
+    @Published var sort: PhotoSort {
+        didSet {
+            UserDefaults.standard.set(sort.rawValue, forKey: sortKey)
+            applySort()
+        }
+    }
+    @Published var sortAscending: Bool {
+        didSet {
+            UserDefaults.standard.set(sortAscending, forKey: sortAscendingKey)
+            applySort()
+        }
+    }
+    /// 사진 파일 정보 (정렬 / 상태 막대용)
+    private(set) var fileInfo: [URL: FileInfo] = [:]
     /// 편집 중인 사진
     @Published private(set) var openedPhoto: URL?
     /// 편집 중인 사진의 편집 상태 (사진 편집 / 누끼 탭이 함께 사용)
@@ -31,21 +53,32 @@ final class FolderBrowser: ObservableObject {
     }
 
     let standardLocations: [URL]
+    /// 연결된 디스크 (Macintosh HD, 외장 디스크 등)
+    let volumes: [URL]
 
     private var loadGeneration = 0
     private let favoritesKey = "favoriteFolders"
     private let lastFolderKey = "lastFolder"
+    private let sortKey = "photoSort"
+    private let sortAscendingKey = "photoSortAscending"
 
     /// - Parameter launchArguments: 실행 인자. 폴더나 사진 경로가 있으면 바로 엽니다.
     init(launchArguments: [String] = []) {
         let fileManager = FileManager.default
         var locations = [fileManager.homeDirectoryForCurrentUser]
-        for directory in [FileManager.SearchPathDirectory.picturesDirectory, .desktopDirectory, .downloadsDirectory] {
+        for directory in [FileManager.SearchPathDirectory.picturesDirectory, .desktopDirectory,
+                          .documentDirectory, .downloadsDirectory] {
             if let url = fileManager.urls(for: directory, in: .userDomainMask).first {
                 locations.append(url)
             }
         }
         standardLocations = locations
+        volumes = fileManager.mountedVolumeURLs(includingResourceValuesForKeys: nil,
+                                                options: [.skipHiddenVolumes]) ?? []
+
+        let defaults = UserDefaults.standard
+        sort = defaults.string(forKey: "photoSort").flatMap(PhotoSort.init(rawValue:)) ?? .name
+        sortAscending = defaults.object(forKey: "photoSortAscending") as? Bool ?? true
 
         favorites = (UserDefaults.standard.stringArray(forKey: favoritesKey) ?? [])
             .map { URL(fileURLWithPath: $0, isDirectory: true).normalizedFolder }
@@ -86,14 +119,40 @@ final class FolderBrowser: ObservableObject {
     // MARK: 폴더 이동
 
     func open(folder: URL) {
-        currentFolder = folder.normalizedFolder
+        navigate(to: folder, recordHistory: true)
+    }
+
+    private func navigate(to folder: URL, recordHistory: Bool) {
+        let target = folder.normalizedFolder
+        if recordHistory, let current = currentFolder, current != target {
+            backStack.append(current)
+            forwardStack.removeAll()
+        }
+        currentFolder = target
         closePhoto()
         tab = .viewer
         selectedPhoto = nil
+        previewPhoto = nil
         subfolders = []
         photos = []
-        UserDefaults.standard.set(folder.path, forKey: lastFolderKey)
+        fileInfo = [:]
+        UserDefaults.standard.set(target.path, forKey: lastFolderKey)
         reload()
+    }
+
+    var canGoBack: Bool { !backStack.isEmpty }
+    var canGoForward: Bool { !forwardStack.isEmpty }
+
+    func goBack() {
+        guard let previous = backStack.popLast() else { return }
+        if let currentFolder { forwardStack.append(currentFolder) }
+        navigate(to: previous, recordHistory: false)
+    }
+
+    func goForward() {
+        guard let next = forwardStack.popLast() else { return }
+        if let currentFolder { backStack.append(currentFolder) }
+        navigate(to: next, recordHistory: false)
     }
 
     var canGoUp: Bool {
@@ -133,14 +192,17 @@ final class FolderBrowser: ObservableObject {
             switch result {
             case .success(let contents):
                 subfolders = contents.folders
-                photos = contents.photos
+                fileInfo = contents.info
+                photos = FolderBrowser.sorted(contents.photos, info: contents.info, by: sort, ascending: sortAscending)
                 // /var → /private/var 처럼 같은 파일이 다른 경로로 보일 수 있어 이름으로 맞춥니다.
-                openedPhoto = matching(openedPhoto, in: contents.photos)
-                selectedPhoto = matching(selectedPhoto, in: contents.photos)
+                openedPhoto = matching(openedPhoto, in: photos)
+                selectedPhoto = matching(selectedPhoto, in: photos)
+                previewPhoto = matching(previewPhoto, in: photos)
                 if openedPhoto == nil { closePhoto() }
             case .failure(let error):
                 subfolders = []
                 photos = []
+                fileInfo = [:]
                 errorMessage = "폴더를 읽을 수 없습니다.\n\(error.localizedDescription)"
             }
         }
@@ -156,6 +218,43 @@ final class FolderBrowser: ObservableObject {
     struct FolderContents {
         var folders: [URL]
         var photos: [URL]
+        var info: [URL: FileInfo] = [:]
+    }
+
+    struct FileInfo: Equatable {
+        var modified: Date
+        var size: Int
+    }
+
+    private func applySort() {
+        photos = FolderBrowser.sorted(photos, info: fileInfo, by: sort, ascending: sortAscending)
+    }
+
+    /// 정렬. 기준 값이 같으면 이름순으로 정렬합니다.
+    nonisolated static func sorted(_ photos: [URL], info: [URL: FileInfo],
+                                   by sort: PhotoSort, ascending: Bool) -> [URL] {
+        func nameOrder(_ a: URL, _ b: URL) -> ComparisonResult {
+            a.lastPathComponent.localizedStandardCompare(b.lastPathComponent)
+        }
+        func order(_ a: URL, _ b: URL) -> ComparisonResult {
+            switch sort {
+            case .name:
+                return nameOrder(a, b)
+            case .date:
+                let da = info[a]?.modified ?? .distantPast, db = info[b]?.modified ?? .distantPast
+                return da == db ? nameOrder(a, b) : (da < db ? .orderedAscending : .orderedDescending)
+            case .size:
+                let sa = info[a]?.size ?? 0, sb = info[b]?.size ?? 0
+                return sa == sb ? nameOrder(a, b) : (sa < sb ? .orderedAscending : .orderedDescending)
+            case .type:
+                let ta = a.pathExtension.lowercased(), tb = b.pathExtension.lowercased()
+                return ta == tb ? nameOrder(a, b) : (ta < tb ? .orderedAscending : .orderedDescending)
+            }
+        }
+        return photos.sorted { a, b in
+            let result = order(a, b)
+            return ascending ? result == .orderedAscending : result == .orderedDescending
+        }
     }
 
     /// 폴더 트리용: 하위 폴더 목록
@@ -164,24 +263,51 @@ final class FolderBrowser: ObservableObject {
     }
 
     nonisolated static func scan(_ folder: URL) throws -> FolderContents {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .contentModificationDateKey, .fileSizeKey]
         let items = try FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
 
         var folders: [URL] = []
         var photos: [URL] = []
+        var info: [URL: FileInfo] = [:]
         for item in items {
             let values = try? item.resourceValues(forKeys: Set(keys))
             if values?.isDirectory == true && values?.isPackage != true {
                 folders.append(item)
             } else if ImageLoader.isSupportedImage(item) {
                 photos.append(item)
+                info[item] = FileInfo(modified: values?.contentModificationDate ?? .distantPast,
+                                      size: values?.fileSize ?? 0)
             }
         }
         let byName: (URL, URL) -> Bool = {
             $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
         }
-        return FolderContents(folders: folders.sorted(by: byName), photos: photos.sorted(by: byName))
+        return FolderContents(folders: folders.sorted(by: byName), photos: photos.sorted(by: byName), info: info)
+    }
+
+    // MARK: 선택 / 크게 보기
+
+    /// 선택을 offset만큼 옮깁니다. 선택이 없으면 첫 사진을 고릅니다.
+    func moveSelection(by offset: Int) {
+        guard !photos.isEmpty else { return }
+        let target: Int
+        if let selectedPhoto, let index = photos.firstIndex(of: selectedPhoto) {
+            target = min(max(index + offset, 0), photos.count - 1)
+        } else {
+            target = 0
+        }
+        selectedPhoto = photos[target]
+        if previewPhoto != nil { previewPhoto = photos[target] }
+    }
+
+    func preview(_ url: URL) {
+        selectedPhoto = url
+        previewPhoto = url
+    }
+
+    func closePreview() {
+        previewPhoto = nil
     }
 
     // MARK: 사진 열기
@@ -259,6 +385,21 @@ final class FolderBrowser: ObservableObject {
     }
 }
 
+enum PhotoSort: String, CaseIterable, Identifiable {
+    case name, date, size, type
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .name: return "이름"
+        case .date: return "수정한 날짜"
+        case .size: return "파일 크기"
+        case .type: return "종류"
+        }
+    }
+}
+
 enum AppTab: String, CaseIterable, Identifiable {
     case viewer, editor, cutout
 
@@ -293,5 +434,22 @@ extension URL {
     /// 끝의 "/" 유무 등과 상관없이 같은 폴더면 같은 값이 되도록 정규화합니다.
     var normalizedFolder: URL {
         URL(fileURLWithPath: standardizedFileURL.path, isDirectory: true)
+    }
+
+    /// 심볼릭 링크까지 풀어낸 경로 (/var → /private/var 등)
+    var resolvedPath: String {
+        standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    /// self가 other와 같거나 other를 포함하는 상위 폴더인지
+    func contains(_ other: URL) -> Bool {
+        let base = resolvedPath, target = other.resolvedPath
+        if base == target || base == "/" { return true }
+        return target.hasPrefix(base + "/")
+    }
+
+    /// Finder와 같은 표시 이름 (사진, 데스크탑, Macintosh HD …)
+    var displayName: String {
+        FileManager.default.displayName(atPath: path)
     }
 }
