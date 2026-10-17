@@ -108,6 +108,8 @@ public struct HiggsfieldClient: AIImageEditor {
 public enum HiggsfieldError: LocalizedError, Equatable {
     case notInstalled
     case notLoggedIn(String)
+    /// 크레딧을 쓸 작업 공간(workspace)을 아직 고르지 않음
+    case noWorkspace
     case timedOut
     case noImage(String)
 
@@ -117,6 +119,8 @@ public enum HiggsfieldError: LocalizedError, Equatable {
             return "Higgsfield CLI를 찾을 수 없습니다. 터미널에서 'brew install higgsfield-ai/tap/higgsfield' (또는 'npm install -g @higgsfield/cli')로 설치한 뒤 'higgsfield auth login'으로 로그인해 주세요."
         case .notLoggedIn(let detail):
             return "Higgsfield에 로그인되어 있지 않습니다. 터미널에서 'higgsfield auth login'을 실행해 주세요.\n\(detail)"
+        case .noWorkspace:
+            return "Higgsfield 작업 공간(크레딧을 쓸 계정)이 아직 선택되지 않았습니다. 터미널에서 'higgsfield workspace list'로 ID를 확인한 뒤 'higgsfield workspace set <ID>'를 실행해 주세요. (처음 한 번만)"
         case .timedOut:
             return "Higgsfield가 너무 오래 응답하지 않아 중단했습니다. 잠시 뒤 다시 시도해 주세요."
         case .noImage(let detail):
@@ -128,6 +132,9 @@ public enum HiggsfieldError: LocalizedError, Equatable {
         let lower = result.output.lowercased()
         if result.status == 127 || lower.contains("command not found") {
             return .notInstalled
+        }
+        if lower.contains("no workspace selected") || lower.contains("workspace set") {
+            return .noWorkspace
         }
         let tail = CodexError.tail(of: result.output)
         if lower.contains("auth login") || lower.contains("not logged in") || lower.contains("unauthorized")

@@ -95,6 +95,7 @@ struct SettingsView: View {
                 Text("처음 한 번만 터미널에서:").font(.caption.weight(.semibold))
                 Text("1.  brew install higgsfield-ai/tap/higgsfield     (또는 npm install -g @higgsfield/cli)")
                 Text("2.  higgsfield auth login     → Higgsfield 계정으로 로그인")
+                Text("3.  higgsfield workspace list     → 나온 ID로 higgsfield workspace set <ID>")
             }
             .font(.system(.caption, design: .monospaced))
             .textSelection(.enabled)

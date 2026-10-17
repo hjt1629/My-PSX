@@ -90,6 +90,9 @@ final class HiggsfieldClientTests: XCTestCase {
     func testErrors() async {
         await assertThrows(FakeRunner { _, _ in CommandResult(status: 127, output: "zsh:1: command not found: higgsfield") },
                            .notInstalled)
+        await assertThrows(FakeRunner { _, _ in
+            CommandResult(status: 1, output: "Error: No workspace selected.\nHint: Run: higgsfield workspace set <workspace_id>")
+        }, .noWorkspace)
         await assertThrows(FakeRunner { _, _ in CommandResult(status: 0, output: "completed, but nothing to show") },
                            .noImage("completed, but nothing to show"))
         let runner = FakeRunner { _, _ in CommandResult(status: 1, output: "Error: not authenticated. Run `higgsfield auth login`.") }

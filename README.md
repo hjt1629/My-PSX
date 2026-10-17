@@ -54,7 +54,7 @@ Swift + SwiftUI로 만든 네이티브 앱이라 빠르고 가볍습니다.
     처음 한 번 터미널에서 `brew install codex` (또는 `npm install -g @openai/codex`) → `codex login`.
     OpenAI가 공식 지원하는 연동 방식이 아니라 Codex 업데이트에 따라 안 될 수 있고, 이미지를 새로 그리므로 수십 초 이상 걸립니다.
   - **OpenAI API 키** — 사용량만큼 별도 과금, 키는 macOS 키체인에 저장. 모델 선택 가능(기본 `gpt-image-1.5`).
-  - **Higgsfield 구독 (CLI)** — `brew install higgsfield-ai/tap/higgsfield` 후 `higgsfield auth login`. API 키 없이 구독 크레딧 사용. 배경 제거는 전용 모델 `image_background_remover`, 글로 하는 수정은 `gpt_image_2_5`.
+  - **Higgsfield 구독 (CLI)** — `brew install higgsfield-ai/tap/higgsfield` 후 `higgsfield auth login`, `higgsfield workspace list` → `higgsfield workspace set <ID>`. API 키 없이 구독 크레딧 사용. 배경 제거는 전용 모델 `image_background_remover`, 글로 하는 수정은 `gpt_image_2_5`.
 - 수정할 사진은 OpenAI로 전송됩니다. 결과는 '되돌리기'로 취소할 수 있습니다.
 
 **오려내기**
