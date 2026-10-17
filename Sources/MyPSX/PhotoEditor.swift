@@ -95,10 +95,11 @@ final class PhotoEditor: ObservableObject {
         perform("크기 조절 중…") { try ImageOps.resize($0, width: width, height: height) }
     }
 
-    /// macOS 내장 기능으로 배경 제거. 기본은 흰색 배경, transparent면 투명 배경.
-    func removeBackground(transparent: Bool = false) {
+    /// macOS 내장 기능으로 배경 제거(1초 안팎). 기본은 흰색 배경, transparent면 투명 배경.
+    /// largestOnly면 가장 큰 물체(상품)만 남기고 아이콘·글자 같은 작은 물체는 지웁니다.
+    func removeBackground(transparent: Bool = false, largestOnly: Bool = false) {
         perform("배경 제거 중…") { image in
-            let cutout = try ImageOps.removeBackground(image)
+            let cutout = try ImageOps.removeBackground(image, largestOnly: largestOnly)
             return try transparent ? cutout : ImageOps.flatten(cutout)
         }
     }

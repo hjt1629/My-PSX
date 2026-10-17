@@ -722,6 +722,7 @@ struct CutOutPanel: View {
     @State private var customColor = Color(red: 0.2, green: 0.5, blue: 0.9)
     /// 꺼져 있으면 흰색 배경, 켜면 투명 배경
     @AppStorage("cutoutTransparent") private var transparent = false
+    @AppStorage("cutoutLargestOnly") private var largestOnly = true
 
     var body: some View {
         ScrollView {
@@ -748,42 +749,63 @@ struct CutOutPanel: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 12)
 
+                Toggle(isOn: $largestOnly) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("가장 큰 물체(상품)만 남기기")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.text)
+                        Text(largestOnly ? "작은 아이콘·글자·소품은 지웁니다" : "찾은 물체를 모두 남깁니다 (여러 상품 사진)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+
+                // 기본: macOS 내장 기능 — 1초 안팎, 무료, 오프라인
+                Button {
+                    editor.removeBackground(transparent: transparent, largestOnly: largestOnly)
+                } label: {
+                    VStack(spacing: 2) {
+                        Label("빠른 배경 제거", systemImage: "bolt.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("1초 안팎 · 무료 · 인터넷 불필요")
+                            .font(.system(size: 10))
+                            .opacity(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(DarkButtonStyle(prominent: true))
+                .disabled(!editor.canEdit)
+                .padding(.horizontal, 12)
+                .help("macOS 내장 기능으로 배경을 지웁니다 (⇧⌘B)")
+
+                // 어려운 사진용: GPT — 느리지만 상품 위에 겹친 글자·아이콘까지 정리
                 Button {
                     guard let ai = gpt.makeEditor() else { return }
                     editor.aiRemoveBackground(ai, transparent: transparent)
                 } label: {
-                    Label("GPT 배경 제거 (상품만 남기기)", systemImage: "sparkles")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                }
-                .buttonStyle(DarkButtonStyle(prominent: true))
-                .disabled(!editor.canEdit || !gpt.isReady)
-                .padding(.horizontal, 12)
-                .help("GPT가 상품만 남기고 나머지를 흰색으로 정리합니다 (⌥⌘B). 사진이 OpenAI로 전송됩니다.")
-
-                Text(gptNote)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 4)
-
-                Button {
-                    editor.removeBackground(transparent: transparent)
-                } label: {
-                    Label("자동 배경 제거 (macOS)", systemImage: "wand.and.stars")
+                    Label("GPT로 정밀 제거 (상품만 남기기)", systemImage: "sparkles")
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
                 }
                 .buttonStyle(DarkButtonStyle())
-                .disabled(!editor.canEdit)
+                .disabled(!editor.canEdit || !gpt.isReady)
                 .padding(.horizontal, 12)
                 .padding(.top, 6)
-                .padding(.bottom, 4)
-                .help("macOS 내장 기능으로 배경만 제거 (⇧⌘B). 무료, 인터넷 연결 필요 없음. 글자·아이콘은 남을 수 있습니다")
+                .help("GPT가 상품만 남기고 배경·아이콘·글자를 흰색으로 정리합니다 (⌥⌘B). 사진이 OpenAI로 전송됩니다.")
+
+                Text("빠른 제거로 글자·아이콘이 남으면 GPT 정밀 제거를 쓰세요. " + gptNote)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+                    .padding(.bottom, 4)
 
                 PanelHeader(title: "배경 채우기")
                 Text(editor.hasTransparency

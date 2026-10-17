@@ -54,6 +54,7 @@ private struct EditorContent: View {
     @State private var showingOriginal = false
     @State private var confirmOverwrite = false
     @AppStorage("cutoutTransparent") private var cutoutTransparent = false
+    @AppStorage("cutoutLargestOnly") private var cutoutLargestOnly = true
     @EnvironmentObject private var gpt: GPTSettings
     @AppStorage("rightPanelWidth") private var rightWidth: Double = 270
 
@@ -73,7 +74,7 @@ private struct EditorContent: View {
                 } else {
                     EditPanel(editor: editor, cropAspect: $cropAspect, tool: $tool) {
                         browser.tab = .cutout
-                        editor.removeBackground(transparent: cutoutTransparent)
+                        editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
                     }
                 }
             }
@@ -276,7 +277,7 @@ private struct EditorContent: View {
                     .keyboardShortcut("i", modifiers: [.command, .option])
                 Button("") {
                     browser.tab = .cutout
-                    editor.removeBackground(transparent: cutoutTransparent)
+                    editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("") {
