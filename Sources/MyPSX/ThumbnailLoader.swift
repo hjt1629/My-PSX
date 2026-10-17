@@ -10,6 +10,7 @@ final class ThumbnailLoader: @unchecked Sendable {
     static let pixelSize = 640
 
     private let cache = NSCache<NSURL, CGImage>()
+    private let sizes = NSCache<NSURL, NSValue>()
 
     private init() {
         cache.countLimit = 2000
@@ -28,7 +29,18 @@ final class ThumbnailLoader: @unchecked Sendable {
         return image
     }
 
+    /// 원본 픽셀 크기 (썸네일 위에 "1000x1000"처럼 표시)
+    func pixelSize(for url: URL) async -> CGSize? {
+        if let cached = sizes.object(forKey: url as NSURL) { return cached.sizeValue }
+        let size = await Task.detached(priority: .utility) {
+            ImageLoader.pixelSize(of: url)
+        }.value
+        if let size { sizes.setObject(NSValue(size: size), forKey: url as NSURL) }
+        return size
+    }
+
     func invalidate(_ url: URL) {
         cache.removeObject(forKey: url as NSURL)
+        sizes.removeObject(forKey: url as NSURL)
     }
 }

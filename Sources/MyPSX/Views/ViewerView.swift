@@ -589,6 +589,9 @@ private struct PhotoTile: View {
         VStack(spacing: 5) {
             ThumbnailView(url: url)
                 .frame(width: size, height: size)
+                .overlay(alignment: .bottom) {
+                    if isSelected { PixelSizeBadge(url: url) }
+                }
             Text(url.lastPathComponent)
                 .font(.system(size: 11))
                 .foregroundStyle(isSelected ? Color.white : Theme.text)
@@ -743,6 +746,30 @@ private struct PhotoPreview: View {
         }
         .opacity(0)
         .allowsHitTesting(false)
+    }
+}
+
+/// 썸네일 아래쪽에 겹쳐 보이는 원본 크기 (예: 1000x1000)
+struct PixelSizeBadge: View {
+    let url: URL
+    @State private var size: CGSize?
+
+    var body: some View {
+        Group {
+            if let size {
+                Text("\(Int(size.width))x\(Int(size.height))")
+                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .shadow(color: .black, radius: 1)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                    .padding(.bottom, 3)
+            }
+        }
+        .task(id: url) { size = await ThumbnailLoader.shared.pixelSize(for: url) }
     }
 }
 

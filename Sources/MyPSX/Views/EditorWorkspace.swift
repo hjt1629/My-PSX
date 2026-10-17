@@ -454,7 +454,7 @@ private struct EditorThumbnails: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 58), spacing: 6)], spacing: 6) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 6)], spacing: 6) {
                             ForEach(browser.photos, id: \.self) { url in
                                 EditorThumbnailCell(url: url, isOpen: url == browser.openedPhoto)
                                     .id(url)
@@ -492,15 +492,27 @@ private struct EditorThumbnailCell: View {
     let isOpen: Bool
 
     var body: some View {
-        let fill: Color = isOpen ? Theme.accent.opacity(0.3) : Color.white.opacity(0.04)
-        let stroke: Color = isOpen ? Theme.accent : Color.white.opacity(0.08)
-        return ThumbnailView(url: url)
-            .frame(width: 54, height: 54)
-            .padding(3)
-            .background(RoundedRectangle(cornerRadius: 3).fill(fill))
-            .overlay(RoundedRectangle(cornerRadius: 3).stroke(stroke, lineWidth: isOpen ? 2 : 1))
-            .contentShape(Rectangle())
-            .help(url.lastPathComponent)
+        // 고른 사진은 포토스케이프 X처럼 파란 칸 + 크기 표시 + 파일 이름
+        VStack(spacing: 3) {
+            ThumbnailView(url: url)
+                .frame(width: 66, height: isOpen ? 50 : 66)
+                .overlay(alignment: .bottom) {
+                    if isOpen { PixelSizeBadge(url: url) }
+                }
+            if isOpen {
+                Text(url.lastPathComponent)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(width: 66, height: 13)
+            }
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 3).fill(isOpen ? Theme.accent : Color.white.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(isOpen ? Theme.accent : Color.white.opacity(0.08)))
+        .contentShape(Rectangle())
+        .help(url.lastPathComponent)
     }
 }
 

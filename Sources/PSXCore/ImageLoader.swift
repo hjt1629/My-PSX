@@ -23,6 +23,19 @@ public enum ImageLoader {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
+    /// 픽셀 크기(가로 × 세로)를 이미지 전체를 읽지 않고 알아냅니다. 세로로 돌려 찍은 사진은 돌린 뒤의 크기입니다.
+    public static func pixelSize(of url: URL) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        let orientation = properties[kCGImagePropertyOrientation] as? UInt32 ?? 1
+        // 5~8은 90도 회전이라 가로·세로가 바뀝니다.
+        return (5...8).contains(orientation)
+            ? CGSize(width: height, height: width)
+            : CGSize(width: width, height: height)
+    }
+
     /// 원본 해상도로 이미지를 불러옵니다. EXIF 회전 정보는 픽셀에 반영됩니다.
     public static func loadFullImage(_ url: URL) throws -> CGImage {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),

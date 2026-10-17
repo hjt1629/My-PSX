@@ -108,6 +108,8 @@ final class ImageOpsTests: XCTestCase {
         XCTAssertEqual(loaded.width, 1)
         XCTAssertEqual(loaded.height, 2)
         assertPixel(loaded, x: 0, y: 0, equals: red)
+        XCTAssertEqual(ImageLoader.pixelSize(of: url), CGSize(width: 1, height: 2))
+        XCTAssertNil(ImageLoader.pixelSize(of: directory.appendingPathComponent("missing.png")))
 
         // 임시 파일이 남아 있으면 안 됩니다.
         let leftovers = try FileManager.default.contentsOfDirectory(atPath: directory.path)
