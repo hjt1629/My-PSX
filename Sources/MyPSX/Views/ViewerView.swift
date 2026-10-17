@@ -755,7 +755,8 @@ struct PixelSizeBadge: View {
     @State private var size: CGSize?
 
     var body: some View {
-        Group {
+        // 빈 Group에는 .task가 실행되지 않아서, 자리를 차지하는 투명 뷰 위에 얹습니다.
+        Color.clear.overlay(alignment: .bottom) {
             if let size {
                 Text("\(Int(size.width))x\(Int(size.height))")
                     .font(.system(size: 10, weight: .semibold).monospacedDigit())
@@ -769,6 +770,7 @@ struct PixelSizeBadge: View {
                     .padding(.bottom, 3)
             }
         }
+        .allowsHitTesting(false)
         .task(id: url) { size = await ThumbnailLoader.shared.pixelSize(for: url) }
     }
 }
