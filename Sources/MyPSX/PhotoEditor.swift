@@ -17,6 +17,8 @@ final class PhotoEditor: ObservableObject {
     @Published private(set) var loadError: String?
     @Published private(set) var isBusy = false
     @Published private(set) var busyMessage = ""
+    /// 방금 끝난 작업이 오래 걸렸으면 걸린 시간 (예: "걸린 시간 34초")
+    @Published private(set) var lastTiming: String?
     @Published var errorMessage: String?
 
     @Published private(set) var mode: Mode = .view
@@ -267,11 +269,14 @@ final class PhotoEditor: ObservableObject {
         guard let current = image, !isBusy else { return }
         isBusy = true
         busyMessage = message
+        let started = Date()
         Task {
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
                     try await operation(current)
                 }.value
+                let seconds = Date().timeIntervalSince(started)
+                lastTiming = seconds >= 2 ? "걸린 시간 \(Int(seconds.rounded()))초" : nil
                 undoStack.append(current)
                 if undoStack.count > historyLimit { undoStack.removeFirst() }
                 redoStack.removeAll()

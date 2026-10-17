@@ -44,7 +44,8 @@ public struct CodexImageClient: AIImageEditor {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: directory) }
 
-        let upload = try ImageOps.downscaled(image, maxPixelSize: 1536)
+        // 작을수록 올리고 처리하는 시간이 줄어듭니다. 결과는 원본 크기로 다시 맞춥니다.
+        let upload = try ImageOps.downscaled(image, maxPixelSize: 1024)
         try ImageEncoding.pngData(upload).write(to: directory.appendingPathComponent(Self.inputName))
 
         let started = Date()
@@ -82,25 +83,26 @@ public struct CodexImageClient: AIImageEditor {
          "--skip-git-repo-check",
          // --full-auto 는 최신 Codex에서 없어졌습니다. exec 는 원래 승인을 묻지 않으므로 샌드박스만 지정합니다.
          "--sandbox", "workspace-write",
+         // 계획·검토를 짧게 해서 바로 이미지 도구를 부르게 합니다 (가장 큰 시간 절약)
+         "-c", "model_reasoning_effort=\"low\"",
          // -i 는 여러 값을 받으므로 바로 뒤에 다른 옵션(-C)이 와야 지시문을 삼키지 않습니다.
          "--image", directory.appendingPathComponent(inputName).path,
          "-C", directory.path,
          instructions(for: prompt)]
     }
 
-    /// Codex에게 줄 지시문. 이미지 도구로 input.png를 고쳐 output.png로 저장하게 합니다.
+    /// Codex에게 줄 지시문. 탐색·확인 없이 이미지 도구를 한 번만 부르고 output.png로 저장하게 합니다.
     static func instructions(for prompt: String) -> String {
         """
-        Use your built-in image generation tool to edit the photo ./\(inputName) in the current directory.
+        Work as fast as possible. Do not plan, explore, inspect files or explain.
+        Call your built-in image generation tool exactly once to edit the attached photo ./\(inputName).
 
         Edit request: \(prompt)
 
-        Rules:
-        - Use ./\(inputName) as the reference image and keep everything not mentioned in the request unchanged \
-        (same subject, composition, framing, colors and details).
-        - Save the final edited image as a PNG file at ./\(outputName) in the current directory.
-        - Do not create, change or delete any other files.
-        - When the file is saved, reply with only: DONE
+        Keep everything not mentioned in the request unchanged (same subject, composition, framing, colors and details). \
+        Use a medium or lower quality setting and about 1024 px output if the tool lets you choose.
+        Then save the result as ./\(outputName) with a single command (skip this if the tool already saved it there) \
+        and reply with only: DONE
         """
     }
 

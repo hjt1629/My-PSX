@@ -167,6 +167,10 @@ private struct EditorContent: View {
             if let index = browser.openedPhotoIndex {
                 Text("· \(index + 1) / \(browser.photos.count)").monospacedDigit().lineLimit(1)
             }
+            if let timing = editor.lastTiming {
+                Text("· \(timing)").monospacedDigit().lineLimit(1)
+                    .foregroundStyle(Theme.accent)
+            }
 
             Spacer(minLength: 12)
 
