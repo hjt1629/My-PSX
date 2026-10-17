@@ -26,10 +26,6 @@ final class GPTSettings: ObservableObject {
     @Published var model: String {
         didSet { UserDefaults.standard.set(model, forKey: modelKey) }
     }
-    /// GPT 빠른 배경 제거에서 "어느 것이 상품인지" 판단할 모델 (API 키 방식)
-    @Published var pickerModel: String {
-        didSet { UserDefaults.standard.set(pickerModel, forKey: pickerModelKey) }
-    }
     @Published var provider: AIProvider {
         didSet { UserDefaults.standard.set(provider.rawValue, forKey: providerKey) }
     }
@@ -38,14 +34,12 @@ final class GPTSettings: ObservableObject {
     static let suggestedModels = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "gpt-image-2"]
 
     private let modelKey = "openAIImageModel"
-    private let pickerModelKey = "openAIPickerModel"
     private let providerKey = "aiProvider"
     private let keychainService = "com.hjt1629.mypsx.openai"
     private let keychainAccount = "api-key"
 
     init() {
         model = UserDefaults.standard.string(forKey: modelKey) ?? OpenAIImageClient.defaultModel
-        pickerModel = UserDefaults.standard.string(forKey: pickerModelKey) ?? OpenAIProductPicker.defaultModel
         provider = UserDefaults.standard.string(forKey: "aiProvider").flatMap(AIProvider.init(rawValue:)) ?? .codex
         hasAPIKey = !(apiKey ?? "").isEmpty
     }
@@ -77,17 +71,6 @@ final class GPTSettings: ObservableObject {
         switch provider {
         case .codex: return CodexImageClient()
         case .apiKey: return makeClient()
-        }
-    }
-
-    /// GPT 빠른 배경 제거용: 번호 표시 사진에서 상품 번호만 고르는 AI
-    func makePicker() -> (any AIProductPicker)? {
-        switch provider {
-        case .codex: return CodexImageClient()
-        case .apiKey:
-            guard let key = apiKey, !key.isEmpty else { return nil }
-            let name = pickerModel.trimmingCharacters(in: .whitespaces)
-            return OpenAIProductPicker(apiKey: key, model: name.isEmpty ? OpenAIProductPicker.defaultModel : name)
         }
     }
 

@@ -32,11 +32,14 @@ public struct CodexImageClient: AIImageEditor {
 
     public var displayName: String { "ChatGPT 구독 (Codex CLI)" }
 
-    /// Codex의 이미지 도구는 투명 배경을 만들지 못합니다.
-    public var supportsTransparentBackground: Bool { false }
+    /// Codex의 이미지 도구(image_gen)는 transparent_background 옵션으로 투명 배경을 직접 만듭니다.
+    public var supportsTransparentBackground: Bool { true }
 
     static let inputName = "input.png"
     static let outputName = "output.png"
+
+    /// 생각 단계를 끄는 값. 모델이 받지 않으면 이 옵션 없이 한 번 더 실행합니다.
+    static let fastReasoningEffort = "none"
 
     public func edit(_ image: CGImage, prompt: String, transparentBackground: Bool) async throws -> CGImage {
         let fileManager = FileManager.default
@@ -49,21 +52,31 @@ public struct CodexImageClient: AIImageEditor {
         try ImageEncoding.pngData(upload).write(to: directory.appendingPathComponent(Self.inputName))
 
         let started = Date()
-        let result = try await runner.run(Self.arguments(directory: directory, prompt: prompt),
-                                          in: directory,
-                                          environment: Self.environment(),
-                                          timeout: timeout)
+        var result = try await run(directory: directory, prompt: prompt, transparent: transparentBackground,
+                                   reasoningEffort: Self.fastReasoningEffort)
+        if result.status != 0, Self.rejectedReasoningEffort(result.output) {
+            result = try await run(directory: directory, prompt: prompt, transparent: transparentBackground,
+                                   reasoningEffort: nil)
+        }
         if result.timedOut { throw CodexError.timedOut }
 
         // 작업 폴더는 곧 지워지므로 파일을 메모리로 다 읽어 들인 뒤 해독합니다.
-        guard let outputURL = Self.findOutput(in: directory, codexHome: codexHome, since: started),
+        let outputURL = Self.savedPath(in: result.output)
+            ?? Self.findOutput(in: directory, codexHome: codexHome, since: started)
+        guard let outputURL,
               let data = try? Data(contentsOf: outputURL),
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let output = CGImageSourceCreateImageAtIndex(
                   source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else {
             throw CodexError.from(result)
         }
-        return try AIResult.fit(output, to: image, keepTransparency: false)
+        return try AIResult.fit(output, to: image, keepTransparency: transparentBackground)
+    }
+
+    private func run(directory: URL, prompt: String, transparent: Bool, reasoningEffort: String?) async throws -> CommandResult {
+        try await runner.run(Self.arguments(directory: directory, prompt: prompt, transparent: transparent,
+                                            reasoningEffort: reasoningEffort),
+                             in: directory, environment: Self.environment(), timeout: timeout)
     }
 
     /// `codex login status` 결과 (설치 / 로그인 확인용)
@@ -78,32 +91,53 @@ public struct CodexImageClient: AIImageEditor {
 
     // MARK: 도우미
 
-    static func arguments(directory: URL, prompt: String) -> [String] {
-        ["codex", "exec",
-         "--skip-git-repo-check",
-         // --full-auto 는 최신 Codex에서 없어졌습니다. exec 는 원래 승인을 묻지 않으므로 샌드박스만 지정합니다.
-         "--sandbox", "workspace-write",
-         // 계획·검토를 짧게 해서 바로 이미지 도구를 부르게 합니다 (가장 큰 시간 절약)
-         "-c", "model_reasoning_effort=\"low\"",
-         // -i 는 여러 값을 받으므로 바로 뒤에 다른 옵션(-C)이 와야 지시문을 삼키지 않습니다.
-         "--image", directory.appendingPathComponent(inputName).path,
-         "-C", directory.path,
-         instructions(for: prompt)]
+    static func arguments(directory: URL, prompt: String, transparent: Bool,
+                          reasoningEffort: String? = fastReasoningEffort) -> [String] {
+        var arguments = ["codex", "exec",
+                         "--skip-git-repo-check",
+                         // 셸 명령이 필요 없습니다. 이미지 도구는 결과를 ~/.codex/generated_images 에 저장합니다.
+                         "--sandbox", "read-only",
+                         // 진행 기록을 JSON으로 받아 저장된 이미지 경로(saved_path)를 바로 읽습니다.
+                         "--json"]
+        if let reasoningEffort {
+            // 계획·검토 없이 바로 이미지 도구를 부르게 합니다 (가장 큰 시간 절약)
+            arguments += ["-c", "model_reasoning_effort=\"\(reasoningEffort)\""]
+        }
+        // -i 는 여러 값을 받으므로 바로 뒤에 다른 옵션(-C)이 와야 지시문을 삼키지 않습니다.
+        arguments += ["--image", directory.appendingPathComponent(inputName).path,
+                      "-C", directory.path,
+                      instructions(for: prompt, input: directory.appendingPathComponent(inputName), transparent: transparent)]
+        return arguments
     }
 
-    /// Codex에게 줄 지시문. 탐색·확인 없이 이미지 도구를 한 번만 부르고 output.png로 저장하게 합니다.
-    static func instructions(for prompt: String) -> String {
+    /// Codex에게 줄 지시문. 다른 일 없이 이미지 도구를 바로 한 번만 부르게 합니다.
+    static func instructions(for prompt: String, input: URL, transparent: Bool) -> String {
         """
-        Work as fast as possible. Do not plan, explore, inspect files or explain.
-        Call your built-in image generation tool exactly once to edit the attached photo ./\(inputName).
-
-        Edit request: \(prompt)
-
-        Keep everything not mentioned in the request unchanged (same subject, composition, framing, colors and details). \
-        Use a medium or lower quality setting and about 1024 px output if the tool lets you choose.
-        Then save the result as ./\(outputName) with a single command (skip this if the tool already saved it there) \
-        and reply with only: DONE
+        Call the built-in image_gen tool exactly once, immediately. Do not plan, explore, explain, \
+        run shell commands, or create, copy or move any files.
+        Tool arguments:
+        - referenced_image_paths: ["\(input.path)"]
+        - transparent_background: \(transparent)
+        - prompt: Edit the referenced photo. \(prompt) Keep everything not mentioned unchanged \
+        (same subject, composition, framing, colors and details).
+        When the tool returns, reply with only: DONE
         """
+    }
+
+    /// `--json` 출력에서 이미지 도구가 저장한 파일 경로를 찾습니다.
+    static func savedPath(in output: String) -> URL? {
+        for match in output.matches(of: #/"saved_path"\s*:\s*"((?:[^"\\]|\\.)+)"/#).reversed() {
+            let path = String(match.1).replacingOccurrences(of: "\\/", with: "/")
+            if FileManager.default.fileExists(atPath: path) { return URL(fileURLWithPath: path) }
+        }
+        return nil
+    }
+
+    /// 모델이 reasoning effort 값을 받지 않아 실패했는지
+    static func rejectedReasoningEffort(_ output: String) -> Bool {
+        let lower = output.lowercased()
+        return lower.contains("reasoning") && (lower.contains("unsupported") || lower.contains("not supported")
+            || lower.contains("invalid") || lower.contains("does not support"))
     }
 
     /// 구독으로 동작하도록 API 키 환경 변수는 넘기지 않습니다.
@@ -140,44 +174,6 @@ public struct CodexImageClient: AIImageEditor {
             if best == nil || date > best!.date { best = (url, date) }
         }
         return best?.url
-    }
-}
-
-// MARK: - 상품 번호 고르기 (GPT 빠른 배경 제거)
-
-extension CodexImageClient: AIProductPicker {
-    static let overlayName = "objects.jpg"
-    static let answerName = "answer.txt"
-
-    /// 이미지를 만들지 않고 글 한 줄만 받으므로 이미지 수정보다 훨씬 빠릅니다.
-    public func pickProduct(in overlay: CGImage, labels: [Int]) async throws -> [Int] {
-        let fileManager = FileManager.default
-        let directory = workRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: directory) }
-        try ImageEncoding.jpegData(overlay).write(to: directory.appendingPathComponent(Self.overlayName))
-
-        let result = try await runner.run(Self.pickArguments(directory: directory, labels: labels),
-                                          in: directory, environment: Self.environment(), timeout: 180)
-        if result.timedOut { throw CodexError.timedOut }
-        // -o 로 받은 마지막 답변 파일을 먼저 보고, 없으면 출력 전체에서 찾습니다.
-        let answer = (try? String(contentsOf: directory.appendingPathComponent(Self.answerName), encoding: .utf8))
-            ?? result.output
-        let picked = ProductPickPrompt.parseLabels(answer, valid: labels)
-        if picked.isEmpty && result.status != 0 { throw CodexError.from(result) }
-        return picked
-    }
-
-    static func pickArguments(directory: URL, labels: [Int]) -> [String] {
-        ["codex", "exec",
-         "--skip-git-repo-check",
-         "--sandbox", "read-only",
-         // 짧게 생각하게 해서 응답을 빠르게
-         "-c", "model_reasoning_effort=\"low\"",
-         "--image", directory.appendingPathComponent(overlayName).path,
-         "-o", directory.appendingPathComponent(answerName).path,
-         "-C", directory.path,
-         ProductPickPrompt.text(labels: labels) + "\nDo not run any commands or edit files; just answer."]
     }
 }
 

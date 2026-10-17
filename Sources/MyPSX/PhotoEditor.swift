@@ -150,23 +150,15 @@ final class PhotoEditor: ObservableObject {
 
     /// 글로 쓴 지시대로 AI가 사진을 수정합니다.
     func aiEdit(_ ai: any AIImageEditor, prompt: String) {
-        perform("AI가 사진을 수정하는 중… (1~2분 걸릴 수 있습니다)") {
+        perform("GPT가 사진을 수정하는 중…") {
             try await ai.edit($0, prompt: prompt, transparentBackground: false)
         }
     }
 
-    /// GPT 빠른 배경 제거: macOS가 물체를 찾고, GPT는 어느 것이 상품인지만 고르고, macOS가 오립니다.
-    /// 사진을 새로 그리지 않아 빠르고 상품은 원본 그대로입니다.
-    func quickAIRemoveBackground(_ picker: any AIProductPicker, transparent: Bool) {
-        perform("GPT가 상품을 고르는 중…") { image in
-            try await ProductCutout.run(image, picker: picker, transparent: transparent)
-        }
-    }
-
     /// AI로 배경을 정리합니다. 기본은 흰색 배경, transparent면 투명 배경.
-    /// 투명 배경을 직접 못 만드는 AI(Codex)는 흰 배경으로 정리한 뒤 macOS 기능으로 배경을 지웁니다.
+    /// 투명 배경을 직접 못 만드는 모델(gpt-image-2 API)만 흰 배경으로 정리한 뒤 macOS 기능으로 지웁니다.
     func aiRemoveBackground(_ ai: any AIImageEditor, transparent: Bool) {
-        perform("AI가 배경을 정리하는 중… (1~2분 걸릴 수 있습니다)") { image in
+        perform("GPT가 배경을 정리하는 중…") { image in
             if transparent && ai.supportsTransparentBackground {
                 return try await ai.edit(image, prompt: AIPrompts.transparentBackground, transparentBackground: true)
             }

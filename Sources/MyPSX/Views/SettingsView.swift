@@ -77,7 +77,7 @@ struct SettingsView: View {
             }
             .font(.system(.caption, design: .monospaced))
             .textSelection(.enabled)
-            Text("⚠️ 실험 기능입니다. OpenAI가 공식 지원하는 연동 방식이 아니라 Codex 업데이트에 따라 안 될 수 있고, 한 장에 1~2분 걸립니다. 이미지는 구독의 Codex 사용량을 글보다 많이 씁니다. 투명 배경은 직접 만들지 못해, 흰 배경으로 정리한 뒤 macOS 기능으로 지웁니다.")
+            Text("⚠️ 실험 기능입니다. OpenAI가 공식 지원하는 연동 방식이 아니라 Codex 업데이트에 따라 안 될 수 있고, 이미지를 새로 그리므로 수십 초 이상 걸리고, 구독의 Codex 사용량을 글보다 많이 씁니다.")
                 .font(.caption)
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
@@ -142,19 +142,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("이미지 모델 (GPT 정밀 제거 · GPT로 수정)")
-        }
-
-        Section {
-            TextField(text: $settings.pickerModel, prompt: Text(OpenAIProductPicker.defaultModel)) {
-                Text("모델")
-            }
-            .textFieldStyle(.roundedBorder)
-            Text("GPT 빠른 배경 제거에서 '어느 것이 상품인지'만 판단하는 모델입니다. 작은 모델일수록 빠르고 저렴합니다.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } header: {
-            Text("판단 모델 (GPT 빠른 배경 제거)")
+            Text("이미지 모델")
         }
     }
 

@@ -282,9 +282,8 @@ private struct EditorContent: View {
                 Button("") { removeBackgroundQuickly() }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("") {
-                    guard let ai = gpt.makeEditor() else { return }
                     browser.tab = .cutout
-                    editor.aiRemoveBackground(ai, transparent: cutoutTransparent)
+                    editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
                 }
                 .keyboardShortcut("b", modifiers: [.command, .option])
             }
@@ -357,11 +356,11 @@ private struct EditorContent: View {
         save(to: url)
     }
 
-    /// ⇧⌘B: GPT를 쓸 수 있으면 GPT 빠른 배경 제거, 아니면 맥 AI만으로
+    /// ⇧⌘B: GPT를 쓸 수 있으면 GPT 빠른 배경 제거, 아니면 맥 AI로
     private func removeBackgroundQuickly() {
         browser.tab = .cutout
-        if gpt.isReady, let picker = gpt.makePicker() {
-            editor.quickAIRemoveBackground(picker, transparent: cutoutTransparent)
+        if gpt.isReady, let ai = gpt.makeEditor() {
+            editor.aiRemoveBackground(ai, transparent: cutoutTransparent)
         } else {
             editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
         }

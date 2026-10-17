@@ -33,18 +33,20 @@ final class CodexImageClientTests: XCTestCase {
         let result = try await makeClient(runner).edit(original, prompt: "배경을 흰색으로", transparentBackground: false)
 
         let call = try XCTUnwrap(runner.calls.first)
-        XCTAssertEqual(Array(call.arguments.prefix(5)),
-                       ["codex", "exec", "--skip-git-repo-check", "--sandbox", "workspace-write"])
+        // 셸 명령이 필요 없어 읽기 전용, 진행 기록은 JSON, 생각 단계는 끔
+        XCTAssertEqual(Array(call.arguments.prefix(8)),
+                       ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json",
+                        "-c", "model_reasoning_effort=\"none\""])
         XCTAssertFalse(call.arguments.contains("--full-auto"))
-        XCTAssertEqual(Array(call.arguments[5...6]), ["-c", "model_reasoning_effort=\"low\""])
-        XCTAssertEqual(call.arguments[7], "--image")
-        XCTAssertTrue(call.arguments[8].hasSuffix("/input.png"))
-        XCTAssertEqual(call.arguments[9], "-C")
-        XCTAssertEqual(call.arguments[10], call.directory.path)
+        XCTAssertEqual(call.arguments[8], "--image")
+        XCTAssertTrue(call.arguments[9].hasSuffix("/input.png"))
+        XCTAssertEqual(call.arguments[10], "-C")
+        XCTAssertEqual(call.arguments[11], call.directory.path)
         let prompt = try XCTUnwrap(call.arguments.last)
         XCTAssertTrue(prompt.contains("배경을 흰색으로"))
-        XCTAssertTrue(prompt.contains("./input.png"))
-        XCTAssertTrue(prompt.contains("./output.png"))
+        XCTAssertTrue(prompt.contains("image_gen"))
+        XCTAssertTrue(prompt.contains(call.arguments[9]))           // referenced_image_paths
+        XCTAssertTrue(prompt.contains("transparent_background: false"))
         XCTAssertNil(call.environment["OPENAI_API_KEY"])
 
         // 같은 비율이라 원본 크기로 맞춰지고, 작업 폴더는 지워집니다.
@@ -78,6 +80,39 @@ final class CodexImageClientTests: XCTestCase {
         let result = try await makeClient(runner).edit(TestImages.solid(width: 20, height: 20, gray: 0.1),
                                                        prompt: "x", transparentBackground: false)
         XCTAssertGreaterThan(TestImages.pixel(result).0, 200)
+    }
+
+    func testReadsSavedPathFromJSONOutputAndKeepsTransparency() async throws {
+        let saved = root.appendingPathComponent("somewhere/ig_1.png")
+        try FileManager.default.createDirectory(at: saved.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let runner = FakeRunner { arguments, _ in
+            XCTAssertTrue(arguments.last?.contains("transparent_background: true") == true)
+            try ImageEncoding.pngData(TestImages.transparent(width: 20, height: 20)).write(to: saved)
+            let escaped = saved.path.replacingOccurrences(of: "/", with: "\\/")
+            return CommandResult(status: 0, output: """
+                {"type":"thread.started"}
+                {"type":"item.completed","item":{"type":"image_generation","saved_path":"\(escaped)"}}
+                {"type":"turn.completed"}
+                """)
+        }
+        let result = try await makeClient(runner).edit(TestImages.solid(width: 20, height: 20, gray: 0.5),
+                                                       prompt: "x", transparentBackground: true)
+        XCTAssertTrue(result.hasAlpha)
+    }
+
+    func testRetriesWithoutReasoningEffortWhenModelRejectsIt() async throws {
+        let runner = FakeRunner { arguments, directory in
+            if arguments.contains("model_reasoning_effort=\"none\"") {
+                return CommandResult(status: 1, output: "ERROR: Unsupported value: 'none' is not supported for reasoning.effort")
+            }
+            try ImageEncoding.pngData(TestImages.solid(width: 10, height: 10, gray: 1))
+                .write(to: directory.appendingPathComponent("output.png"))
+            return CommandResult(status: 0, output: "DONE")
+        }
+        _ = try await makeClient(runner).edit(TestImages.solid(width: 10, height: 10, gray: 0.1),
+                                              prompt: "x", transparentBackground: false)
+        XCTAssertEqual(runner.calls.count, 2)
+        XCTAssertFalse(runner.calls[1].arguments.contains("-c"))
     }
 
     func testNotInstalled() async {
@@ -124,8 +159,8 @@ final class CodexImageClientTests: XCTestCase {
         XCTAssertEqual(text, "Logged in using ChatGPT")
     }
 
-    func testCannotMakeTransparentBackground() {
-        XCTAssertFalse(CodexImageClient().supportsTransparentBackground)
+    func testTransparentBackgroundSupport() {
+        XCTAssertTrue(CodexImageClient().supportsTransparentBackground)
         XCTAssertTrue(OpenAIImageClient(apiKey: "k", model: "gpt-image-1.5").supportsTransparentBackground)
         XCTAssertFalse(OpenAIImageClient(apiKey: "k", model: "gpt-image-2").supportsTransparentBackground)
     }
