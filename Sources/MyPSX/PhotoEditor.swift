@@ -95,8 +95,12 @@ final class PhotoEditor: ObservableObject {
         perform("크기 조절 중…") { try ImageOps.resize($0, width: width, height: height) }
     }
 
-    func removeBackground() {
-        perform("배경 제거 중…") { try ImageOps.removeBackground($0) }
+    /// macOS 내장 기능으로 배경 제거. 기본은 흰색 배경, transparent면 투명 배경.
+    func removeBackground(transparent: Bool = false) {
+        perform("배경 제거 중…") { image in
+            let cutout = try ImageOps.removeBackground(image)
+            return try transparent ? cutout : ImageOps.flatten(cutout)
+        }
     }
 
     // MARK: 밝기 / 대비 / 채도
@@ -138,21 +142,29 @@ final class PhotoEditor: ObservableObject {
         perform("조정 적용 중…") { try ImageOps.adjust($0, adjustments) }
     }
 
-    // MARK: GPT
+    // MARK: AI (GPT)
 
-    /// OpenAI 이미지 편집으로 사진을 수정합니다.
-    func gptEdit(client: OpenAIImageClient, prompt: String, transparentBackground: Bool = false) {
-        let message = transparentBackground
-            ? "GPT가 배경을 지우는 중… (1~2분 걸릴 수 있습니다)"
-            : "GPT가 사진을 수정하는 중… (1~2분 걸릴 수 있습니다)"
-        perform(message) {
-            try await client.edit($0, prompt: prompt, transparentBackground: transparentBackground)
+    /// 글로 쓴 지시대로 AI가 사진을 수정합니다.
+    func aiEdit(_ ai: any AIImageEditor, prompt: String) {
+        perform("AI가 사진을 수정하는 중… (1~2분 걸릴 수 있습니다)") {
+            try await ai.edit($0, prompt: prompt, transparentBackground: false)
         }
     }
 
-    static let gptBackgroundRemovalPrompt =
-        "Remove the background completely and make it transparent. Keep the main subject exactly as it is: "
-        + "same shape, colors, texture, details, position and size. Do not add anything."
+    /// AI로 배경을 정리합니다. 기본은 흰색 배경, transparent면 투명 배경.
+    /// 투명 배경을 직접 못 만드는 AI(Codex)는 흰 배경으로 정리한 뒤 macOS 기능으로 배경을 지웁니다.
+    func aiRemoveBackground(_ ai: any AIImageEditor, transparent: Bool) {
+        perform("AI가 배경을 정리하는 중… (1~2분 걸릴 수 있습니다)") { image in
+            if transparent && ai.supportsTransparentBackground {
+                return try await ai.edit(image, prompt: AIPrompts.transparentBackground, transparentBackground: true)
+            }
+            let white = try await ai.edit(image, prompt: AIPrompts.whiteBackground, transparentBackground: false)
+            guard transparent else {
+                return try white.hasAlpha ? ImageOps.flatten(white) : white
+            }
+            return try ImageOps.removeBackground(white)
+        }
+    }
 
     /// 투명한 부분을 지정한 색으로 채웁니다.
     func fillBackground(_ color: CGColor) {

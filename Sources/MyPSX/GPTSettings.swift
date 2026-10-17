@@ -2,23 +2,45 @@ import Foundation
 import PSXCore
 import Security
 
-/// OpenAI(GPT) 연동 설정. API 키는 macOS 키체인에 안전하게 저장합니다.
+/// GPT를 어떤 방식으로 쓸지
+enum AIProvider: String, CaseIterable, Identifiable {
+    /// ChatGPT 구독 (맥에 설치된 Codex CLI에 로그인)
+    case codex
+    /// OpenAI API 키 (사용량만큼 별도 과금)
+    case apiKey
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .codex: return "ChatGPT 구독 (Codex CLI) — 실험 기능"
+        case .apiKey: return "OpenAI API 키"
+        }
+    }
+}
+
+/// GPT 연동 설정. API 키는 macOS 키체인에 안전하게 저장합니다.
 @MainActor
 final class GPTSettings: ObservableObject {
     @Published private(set) var hasAPIKey = false
     @Published var model: String {
         didSet { UserDefaults.standard.set(model, forKey: modelKey) }
     }
+    @Published var provider: AIProvider {
+        didSet { UserDefaults.standard.set(provider.rawValue, forKey: providerKey) }
+    }
 
     /// 자주 쓰는 모델. gpt-image-2는 투명 배경을 지원하지 않습니다.
     static let suggestedModels = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "gpt-image-2"]
 
     private let modelKey = "openAIImageModel"
+    private let providerKey = "aiProvider"
     private let keychainService = "com.hjt1629.mypsx.openai"
     private let keychainAccount = "api-key"
 
     init() {
         model = UserDefaults.standard.string(forKey: modelKey) ?? OpenAIImageClient.defaultModel
+        provider = UserDefaults.standard.string(forKey: "aiProvider").flatMap(AIProvider.init(rawValue:)) ?? .codex
         hasAPIKey = !(apiKey ?? "").isEmpty
     }
 
@@ -39,6 +61,19 @@ final class GPTSettings: ObservableObject {
         hasAPIKey = !(apiKey ?? "").isEmpty
     }
 
+    /// 지금 고른 방식으로 쓸 수 있는지 (Codex는 실행해 봐야 알 수 있어 항상 true)
+    var isReady: Bool {
+        provider == .codex || hasAPIKey
+    }
+
+    /// 지금 고른 방식의 AI 편집기
+    func makeEditor() -> (any AIImageEditor)? {
+        switch provider {
+        case .codex: return CodexImageClient()
+        case .apiKey: return makeClient()
+        }
+    }
+
     /// API 키가 있으면 클라이언트를 만들어 줍니다.
     func makeClient() -> OpenAIImageClient? {
         guard let key = apiKey, !key.isEmpty else { return nil }
@@ -46,8 +81,8 @@ final class GPTSettings: ObservableObject {
         return OpenAIImageClient(apiKey: key, model: name.isEmpty ? OpenAIImageClient.defaultModel : name)
     }
 
-    var supportsTransparency: Bool {
-        !model.hasPrefix("gpt-image-2")
+    var providerName: String {
+        makeEditor()?.displayName ?? provider.title
     }
 }
 

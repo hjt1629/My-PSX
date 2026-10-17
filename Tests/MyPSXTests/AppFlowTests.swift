@@ -346,12 +346,42 @@ final class AppFlowTests: XCTestCase {
 
         // 존재하지 않는 주소로 보내 실패를 일으킵니다. (실제 OpenAI 호출 없음)
         let client = OpenAIImageClient(apiKey: "sk-test", baseURL: URL(string: "http://127.0.0.1:9")!)
-        editor.gptEdit(client: client, prompt: "test")
+        editor.aiEdit(client, prompt: "test")
         XCTAssertTrue(editor.isBusy)
         try await waitForIdle(editor, timeout: 30)
         XCTAssertNotNil(editor.errorMessage)
         XCTAssertTrue(editor.image === original)
         XCTAssertFalse(editor.canUndo)
+    }
+
+    @MainActor
+    func testAIBackgroundRemovalIsWhiteByDefault() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))
+        await editor.load()
+        let original = try XCTUnwrap(editor.image)
+        let ai = FakeAIEditor()
+
+        editor.aiRemoveBackground(ai, transparent: false)
+        try await waitForIdle(editor)
+        XCTAssertNil(editor.errorMessage)
+        XCTAssertEqual(ai.prompts, [AIPrompts.whiteBackground])
+        XCTAssertEqual(ai.transparentFlags, [false])
+        XCTAssertFalse(editor.image === original)
+        XCTAssertEqual(editor.image?.hasAlpha, false)
+    }
+
+    @MainActor
+    func testAIBackgroundRemovalTransparentUsesProviderWhenSupported() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))
+        await editor.load()
+        let ai = FakeAIEditor(supportsTransparentBackground: true)
+
+        editor.aiRemoveBackground(ai, transparent: true)
+        try await waitForIdle(editor)
+        XCTAssertNil(editor.errorMessage)
+        XCTAssertEqual(ai.prompts, [AIPrompts.transparentBackground])
+        XCTAssertEqual(ai.transparentFlags, [true])
+        XCTAssertEqual(editor.image?.hasAlpha, true)
     }
 
     @MainActor
@@ -376,7 +406,7 @@ final class AppFlowTests: XCTestCase {
         let original = try XCTUnwrap(editor.image)
         XCTAssertNil(editor.loadError)
 
-        editor.removeBackground()
+        editor.removeBackground(transparent: true)
         try await waitForIdle(editor, timeout: 120)
         XCTAssertNil(editor.errorMessage)
 
@@ -443,5 +473,36 @@ final class AppFlowTests: XCTestCase {
             transparent += 1
         }
         return Double(transparent) / Double(width * height)
+    }
+}
+
+/// 정해 둔 결과를 돌려주는 가짜 AI (네트워크 / Codex 없음)
+final class FakeAIEditor: AIImageEditor, @unchecked Sendable {
+    let supportsTransparentBackground: Bool
+    var displayName: String { "Fake" }
+    private let lock = NSLock()
+    private var _prompts: [String] = []
+    private var _transparentFlags: [Bool] = []
+
+    init(supportsTransparentBackground: Bool = false) {
+        self.supportsTransparentBackground = supportsTransparentBackground
+    }
+
+    var prompts: [String] { lock.lock(); defer { lock.unlock() }; return _prompts }
+    var transparentFlags: [Bool] { lock.lock(); defer { lock.unlock() }; return _transparentFlags }
+
+    func edit(_ image: CGImage, prompt: String, transparentBackground: Bool) async throws -> CGImage {
+        lock.lock()
+        _prompts.append(prompt)
+        _transparentFlags.append(transparentBackground)
+        lock.unlock()
+        let alpha = transparentBackground
+        let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                                bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: (alpha ? CGImageAlphaInfo.premultipliedLast
+                                                   : CGImageAlphaInfo.noneSkipLast).rawValue)!
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: image.width / 2, height: image.height))
+        return context.makeImage()!
     }
 }

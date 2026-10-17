@@ -51,6 +51,7 @@ private struct EditorContent: View {
     @State private var tool: EditTool?
     @State private var showingOriginal = false
     @State private var confirmOverwrite = false
+    @AppStorage("cutoutTransparent") private var cutoutTransparent = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -68,7 +69,7 @@ private struct EditorContent: View {
                 } else {
                     EditPanel(editor: editor, cropAspect: $cropAspect, tool: $tool) {
                         browser.tab = .cutout
-                        editor.removeBackground()
+                        editor.removeBackground(transparent: cutoutTransparent)
                     }
                 }
             }
@@ -271,7 +272,7 @@ private struct EditorContent: View {
                     .keyboardShortcut("i", modifiers: [.command, .option])
                 Button("") {
                     browser.tab = .cutout
-                    editor.removeBackground()
+                    editor.removeBackground(transparent: cutoutTransparent)
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
             }

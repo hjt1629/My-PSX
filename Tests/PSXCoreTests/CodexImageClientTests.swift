@@ -1,0 +1,179 @@
+import CoreGraphics
+import Foundation
+import XCTest
+@testable import PSXCore
+
+final class CodexImageClientTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("CodexTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private func makeClient(_ runner: FakeRunner) -> CodexImageClient {
+        CodexImageClient(runner: runner,
+                         codexHome: root.appendingPathComponent("codex-home"),
+                         workRoot: root.appendingPathComponent("work"))
+    }
+
+    func testRunsCodexExecAndReadsOutputPNG() async throws {
+        let runner = FakeRunner { arguments, directory in
+            // Codex가 할 일: input.png를 읽고 output.png를 씁니다.
+            XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("input.png").path))
+            try ImageEncoding.pngData(TestImages.solid(width: 32, height: 32, gray: 1))
+                .write(to: directory.appendingPathComponent("output.png"))
+            return CommandResult(status: 0, output: "DONE")
+        }
+        let original = TestImages.solid(width: 50, height: 50, gray: 0.2)
+        let result = try await makeClient(runner).edit(original, prompt: "배경을 흰색으로", transparentBackground: false)
+
+        let call = try XCTUnwrap(runner.calls.first)
+        XCTAssertEqual(Array(call.arguments.prefix(4)), ["codex", "exec", "--skip-git-repo-check", "--full-auto"])
+        XCTAssertEqual(call.arguments[4], "-C")
+        XCTAssertEqual(call.arguments[5], call.directory.path)
+        let prompt = try XCTUnwrap(call.arguments.last)
+        XCTAssertTrue(prompt.contains("배경을 흰색으로"))
+        XCTAssertTrue(prompt.contains("./input.png"))
+        XCTAssertTrue(prompt.contains("./output.png"))
+        XCTAssertNil(call.environment["OPENAI_API_KEY"])
+
+        // 같은 비율이라 원본 크기로 맞춰지고, 작업 폴더는 지워집니다.
+        XCTAssertEqual(result.width, 50)
+        XCTAssertEqual(result.height, 50)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: call.directory.path))
+    }
+
+    func testFindsImageSavedUnderAnotherName() async throws {
+        let runner = FakeRunner { _, directory in
+            let nested = directory.appendingPathComponent("images", isDirectory: true)
+            try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+            try ImageEncoding.pngData(TestImages.solid(width: 20, height: 20, gray: 0.9))
+                .write(to: nested.appendingPathComponent("edited.png"))
+            return CommandResult(status: 0, output: "DONE")
+        }
+        let result = try await makeClient(runner).edit(TestImages.solid(width: 20, height: 20, gray: 0.1),
+                                                       prompt: "x", transparentBackground: false)
+        XCTAssertGreaterThan(TestImages.pixel(result).0, 200)
+    }
+
+    func testFindsImageInCodexGeneratedImages() async throws {
+        let codexHome = root.appendingPathComponent("codex-home")
+        let runner = FakeRunner { _, _ in
+            let folder = codexHome.appendingPathComponent("generated_images/session-1", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try ImageEncoding.pngData(TestImages.solid(width: 20, height: 20, gray: 0.9))
+                .write(to: folder.appendingPathComponent("img.png"))
+            return CommandResult(status: 0, output: "DONE")
+        }
+        let result = try await makeClient(runner).edit(TestImages.solid(width: 20, height: 20, gray: 0.1),
+                                                       prompt: "x", transparentBackground: false)
+        XCTAssertGreaterThan(TestImages.pixel(result).0, 200)
+    }
+
+    func testNotInstalled() async {
+        let runner = FakeRunner { _, _ in CommandResult(status: 127, output: "zsh:1: command not found: codex") }
+        await assertThrows(makeClient(runner), CodexError.notInstalled)
+    }
+
+    func testNotLoggedIn() async {
+        let runner = FakeRunner { _, _ in CommandResult(status: 1, output: "Error: Not logged in. Run codex login") }
+        do {
+            _ = try await makeClient(runner).edit(TestImages.solid(width: 8, height: 8, gray: 0.5),
+                                                  prompt: "x", transparentBackground: false)
+            XCTFail("오류가 나야 합니다")
+        } catch let error as CodexError {
+            guard case .notLoggedIn = error else { return XCTFail("\(error)") }
+        } catch {
+            XCTFail("\(error)")
+        }
+    }
+
+    func testNoImageShowsCodexOutput() async {
+        let runner = FakeRunner { _, _ in CommandResult(status: 0, output: "line1\nYou've hit your usage limit.") }
+        do {
+            _ = try await makeClient(runner).edit(TestImages.solid(width: 8, height: 8, gray: 0.5),
+                                                  prompt: "x", transparentBackground: false)
+            XCTFail("오류가 나야 합니다")
+        } catch {
+            XCTAssertEqual(error as? CodexError, .noImage("line1\nYou've hit your usage limit."))
+            XCTAssertTrue(error.localizedDescription.contains("usage limit"))
+        }
+    }
+
+    func testTimedOut() async {
+        let runner = FakeRunner { _, _ in CommandResult(status: 15, output: "", timedOut: true) }
+        await assertThrows(makeClient(runner), CodexError.timedOut)
+    }
+
+    func testLoginStatus() async throws {
+        let runner = FakeRunner { arguments, _ in
+            XCTAssertEqual(arguments, ["codex", "login", "status"])
+            return CommandResult(status: 0, output: "Logged in using ChatGPT\n")
+        }
+        let text = try await makeClient(runner).loginStatus()
+        XCTAssertEqual(text, "Logged in using ChatGPT")
+    }
+
+    func testCannotMakeTransparentBackground() {
+        XCTAssertFalse(CodexImageClient().supportsTransparentBackground)
+        XCTAssertTrue(OpenAIImageClient(apiKey: "k", model: "gpt-image-1.5").supportsTransparentBackground)
+        XCTAssertFalse(OpenAIImageClient(apiKey: "k", model: "gpt-image-2").supportsTransparentBackground)
+    }
+
+    func testLoginShellRunnerRunsCommandsWithArguments() async throws {
+        let result = try await LoginShellRunner().run(["printf", "%s|%s", "a b", "c\"d"],
+                                                      in: root, environment: ProcessInfo.processInfo.environment,
+                                                      timeout: 30)
+        XCTAssertEqual(result.status, 0)
+        XCTAssertTrue(result.output.hasSuffix("a b|c\"d"), result.output)
+    }
+
+    func testLoginShellRunnerTimesOut() async throws {
+        let result = try await LoginShellRunner().run(["sleep", "5"], in: root,
+                                                      environment: ProcessInfo.processInfo.environment, timeout: 0.5)
+        XCTAssertTrue(result.timedOut)
+    }
+
+    private func assertThrows(_ client: CodexImageClient, _ expected: CodexError,
+                              file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await client.edit(TestImages.solid(width: 8, height: 8, gray: 0.5),
+                                      prompt: "x", transparentBackground: false)
+            XCTFail("오류가 나야 합니다", file: file, line: line)
+        } catch {
+            XCTAssertEqual(error as? CodexError, expected, file: file, line: line)
+        }
+    }
+}
+
+/// codex 대신 정해 둔 동작을 하는 가짜 실행기
+final class FakeRunner: CommandRunning, @unchecked Sendable {
+    struct Call {
+        let arguments: [String]
+        let directory: URL
+        let environment: [String: String]
+    }
+
+    private let handler: ([String], URL) throws -> CommandResult
+    private let lock = NSLock()
+    private var _calls: [Call] = []
+
+    init(_ handler: @escaping ([String], URL) throws -> CommandResult) {
+        self.handler = handler
+    }
+
+    var calls: [Call] { lock.lock(); defer { lock.unlock() }; return _calls }
+
+    func run(_ arguments: [String], in directory: URL, environment: [String: String],
+             timeout: TimeInterval) async throws -> CommandResult {
+        lock.lock()
+        _calls.append(Call(arguments: arguments, directory: directory, environment: environment))
+        lock.unlock()
+        return try handler(arguments, directory)
+    }
+}

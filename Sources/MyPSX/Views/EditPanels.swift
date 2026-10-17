@@ -499,7 +499,7 @@ private struct AIEditPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 PanelHeader(title: "GPT로 수정")
-                if gpt.hasAPIKey {
+                if gpt.isReady {
                     promptEditor
                 } else {
                     setup
@@ -511,16 +511,16 @@ private struct AIEditPanel: View {
 
     private var setup: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("원하는 수정을 글로 쓰면 GPT가 사진을 고쳐 줍니다. 먼저 OpenAI API 키를 연결해 주세요.")
+            Text("원하는 수정을 글로 쓰면 GPT가 사진을 고쳐 줍니다. 설정에서 OpenAI API 키를 넣거나, 연결 방식을 'ChatGPT 구독 (Codex CLI)'로 바꿔 주세요.")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.text)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("ChatGPT 구독과는 별도로, 사용한 만큼 OpenAI에 요금이 나갑니다.")
+            Text("API 키 방식은 ChatGPT 구독과 별도로 사용한 만큼 요금이 나갑니다.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             SettingsLink {
-                Label("설정에서 API 키 연결…", systemImage: "key")
+                Label("설정 열기…", systemImage: "gearshape")
                     .font(.system(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -566,8 +566,8 @@ private struct AIEditPanel: View {
             }
 
             Button {
-                guard let client = gpt.makeClient() else { return }
-                editor.gptEdit(client: client, prompt: prompt)
+                guard let ai = gpt.makeEditor() else { return }
+                editor.aiEdit(ai, prompt: prompt)
             } label: {
                 Label("GPT로 수정하기", systemImage: "sparkles")
                     .font(.system(size: 13, weight: .semibold))
@@ -577,12 +577,21 @@ private struct AIEditPanel: View {
             .buttonStyle(DarkButtonStyle(prominent: true))
             .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !editor.canEdit)
 
-            Text("모델: \(gpt.model) · 사진이 OpenAI로 전송되고 사용량만큼 요금이 나갑니다. 결과는 '되돌리기'로 취소할 수 있습니다.")
+            Text(footnote)
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 12)
+    }
+
+    private var footnote: String {
+        switch gpt.provider {
+        case .codex:
+            return "연결: ChatGPT 구독 (Codex CLI) · 구독의 Codex 사용량을 씁니다. 사진이 OpenAI로 전송됩니다. 결과는 '되돌리기'로 취소할 수 있습니다."
+        case .apiKey:
+            return "연결: OpenAI API (\(gpt.model)) · 사용량만큼 요금이 나가고 사진이 OpenAI로 전송됩니다. 결과는 '되돌리기'로 취소할 수 있습니다."
+        }
     }
 }
 
@@ -594,22 +603,38 @@ struct CutOutPanel: View {
     let saveAsPNG: () -> Void
 
     @State private var customColor = Color(red: 0.2, green: 0.5, blue: 0.9)
+    /// 꺼져 있으면 흰색 배경, 켜면 투명 배경
+    @AppStorage("cutoutTransparent") private var transparent = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 PanelHeader(title: "오려내기 (배경 제거)")
-                Text("사진 속 사람·동물·물체를 자동으로 찾아 배경을 지웁니다. macOS에 들어 있는 기능이라 인터넷 연결이 필요 없습니다.")
+                Text("사진 속 사람·동물·물체만 남기고 배경을 흰색으로 바꿉니다.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 8)
+
+                Toggle(isOn: $transparent) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("투명 배경으로")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.text)
+                        Text(transparent ? "배경을 투명하게 지웁니다 (PNG로 저장)" : "끄면 흰색 배경으로 만듭니다")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
 
                 Button {
-                    editor.removeBackground()
+                    editor.removeBackground(transparent: transparent)
                 } label: {
-                    Label("자동 배경 제거", systemImage: "wand.and.stars")
+                    Label("자동 배경 제거 (macOS)", systemImage: "wand.and.stars")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
@@ -617,12 +642,11 @@ struct CutOutPanel: View {
                 .buttonStyle(DarkButtonStyle(prominent: true))
                 .disabled(!editor.canEdit)
                 .padding(.horizontal, 12)
-                .help("배경 제거 (⇧⌘B)")
+                .help("macOS 내장 기능으로 배경 제거 (⇧⌘B). 무료, 인터넷 연결 필요 없음")
 
                 Button {
-                    guard let client = gpt.makeClient() else { return }
-                    editor.gptEdit(client: client, prompt: PhotoEditor.gptBackgroundRemovalPrompt,
-                                   transparentBackground: true)
+                    guard let ai = gpt.makeEditor() else { return }
+                    editor.aiRemoveBackground(ai, transparent: transparent)
                 } label: {
                     Label("GPT로 배경 제거", systemImage: "sparkles")
                         .font(.system(size: 12))
@@ -631,10 +655,10 @@ struct CutOutPanel: View {
                         .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
                 }
                 .buttonStyle(DarkButtonStyle())
-                .disabled(!editor.canEdit || !gpt.hasAPIKey || !gpt.supportsTransparency)
+                .disabled(!editor.canEdit || !gpt.isReady)
                 .padding(.horizontal, 12)
                 .padding(.top, 6)
-                .help("OpenAI로 배경을 지웁니다. 사진이 OpenAI로 전송되고 사용량만큼 요금이 나갑니다.")
+                .help("GPT로 배경을 정리합니다. 사진이 OpenAI로 전송됩니다.")
 
                 Text(gptNote)
                     .font(.system(size: 10))
@@ -683,7 +707,7 @@ struct CutOutPanel: View {
 
                 PanelHeader(title: "저장")
                 Button(action: saveAsPNG) {
-                    Label("투명 PNG로 저장…", systemImage: "square.and.arrow.down")
+                    Label(transparent ? "투명 PNG로 저장…" : "PNG로 저장…", systemImage: "square.and.arrow.down")
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -698,9 +722,14 @@ struct CutOutPanel: View {
     }
 
     private var gptNote: String {
-        if !gpt.hasAPIKey { return "GPT로 배경 제거: 설정(⌘,)에서 OpenAI API 키를 연결하면 쓸 수 있습니다." }
-        if !gpt.supportsTransparency { return "지금 모델(\(gpt.model))은 투명 배경을 지원하지 않습니다. 설정에서 gpt-image-1.5로 바꿔 주세요." }
-        return "GPT(\(gpt.model)): 머리카락 등 어려운 경계에 유리하지만 유료이고 1~2분 걸립니다."
+        if !gpt.isReady { return "GPT로 배경 제거: 설정(⌘,)에서 연결 방식을 고르면 쓸 수 있습니다." }
+        switch gpt.provider {
+        case .codex:
+            return "ChatGPT 구독(Codex CLI)으로 처리합니다. 1~2분 걸리고 구독 사용량을 씁니다."
+                + (transparent ? " 투명 배경은 흰 배경으로 정리한 뒤 macOS 기능으로 지웁니다." : "")
+        case .apiKey:
+            return "OpenAI API(\(gpt.model))로 처리합니다. 1~2분 걸리고 사용량만큼 요금이 나갑니다."
+        }
     }
 
     private func swatch(_ title: String, color: Color, cgColor: CGColor) -> some View {

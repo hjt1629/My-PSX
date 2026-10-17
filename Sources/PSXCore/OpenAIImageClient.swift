@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// OpenAI 이미지 편집 API(/v1/images/edits)로 사진을 수정합니다.
 /// ChatGPT 구독과는 별개인 OpenAI API 키가 필요합니다. (사용한 만큼 과금)
-public struct OpenAIImageClient: Sendable {
+public struct OpenAIImageClient: AIImageEditor {
     public var apiKey: String
     public var model: String
     public var baseURL: URL
@@ -23,6 +23,11 @@ public struct OpenAIImageClient: Sendable {
         self.baseURL = baseURL
         self.session = session
     }
+
+    public var displayName: String { "OpenAI API (\(model))" }
+
+    /// gpt-image-2 계열은 투명 배경을 지원하지 않습니다.
+    public var supportsTransparentBackground: Bool { !model.hasPrefix("gpt-image-2") }
 
     /// 사진을 지시문대로 수정합니다.
     /// - Parameter transparentBackground: true면 배경을 투명하게 만든 PNG를 요청합니다.
@@ -49,7 +54,7 @@ public struct OpenAIImageClient: Sendable {
 
         let data = try await send(request)
         let result = try Self.decodeImage(from: data)
-        return try Self.fitResult(result, to: image, keepTransparency: transparentBackground)
+        return try AIResult.fit(result, to: image, keepTransparency: transparentBackground)
     }
 
     /// API 키와 모델 이름이 맞는지 확인합니다.
@@ -95,20 +100,8 @@ public struct OpenAIImageClient: Sendable {
         return image
     }
 
-    /// 결과의 비율이 원본과 거의 같으면 원본 크기로 맞춥니다.
-    /// 투명 배경을 요청하지 않았고 원본이 불투명하면 결과도 불투명하게 만듭니다.
     static func fitResult(_ result: CGImage, to original: CGImage, keepTransparency: Bool) throws -> CGImage {
-        var output = result
-        let originalRatio = Double(original.width) / Double(original.height)
-        let resultRatio = Double(result.width) / Double(result.height)
-        if abs(originalRatio - resultRatio) / originalRatio < 0.02,
-           result.width != original.width || result.height != original.height {
-            output = try ImageOps.resize(output, width: original.width, height: original.height)
-        }
-        if !keepTransparency && !original.hasAlpha && output.hasAlpha {
-            output = try ImageOps.flatten(output)
-        }
-        return output
+        try AIResult.fit(result, to: original, keepTransparency: keepTransparency)
     }
 }
 
