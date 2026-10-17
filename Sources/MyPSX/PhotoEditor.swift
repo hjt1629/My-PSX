@@ -29,6 +29,7 @@ final class PhotoEditor: ObservableObject {
     @Published private var savedImage: CGImage?
 
     private let historyLimit = 30
+    private var isLoading = false
 
     init(url: URL) {
         sourceURL = url
@@ -41,6 +42,9 @@ final class PhotoEditor: ObservableObject {
         return image !== savedImage
     }
     var canEdit: Bool { image != nil && !isBusy && mode == .view }
+    /// 마지막으로 저장(또는 불러온) 상태 — "원본 비교"에 사용
+    var originalImage: CGImage? { savedImage }
+    var hasTransparency: Bool { image?.hasAlpha ?? false }
 
     /// 원본 파일 형식으로 덮어쓸 수 있는지 (RAW 등은 불가)
     var canOverwriteOriginal: Bool {
@@ -57,7 +61,9 @@ final class PhotoEditor: ObservableObject {
     // MARK: 불러오기
 
     func load() async {
-        guard image == nil, loadError == nil else { return }
+        guard image == nil, loadError == nil, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
         let url = sourceURL
         do {
             let loaded = try await Task.detached(priority: .userInitiated) {
@@ -86,6 +92,19 @@ final class PhotoEditor: ObservableObject {
 
     func removeBackground() {
         perform("배경 제거 중…") { try ImageOps.removeBackground($0) }
+    }
+
+    /// 투명한 부분을 지정한 색으로 채웁니다.
+    func fillBackground(_ color: CGColor) {
+        perform("배경 채우는 중…") { try ImageOps.flatten($0, background: color) }
+    }
+
+    /// 마지막으로 저장한 상태로 되돌립니다. (실행 취소 가능)
+    func revertToSaved() {
+        guard !isBusy, let saved = savedImage, let current = image, current !== saved else { return }
+        undoStack.append(current)
+        redoStack.removeAll()
+        image = saved
     }
 
     // MARK: 자르기

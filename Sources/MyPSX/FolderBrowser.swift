@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import PSXCore
 
 /// 현재 열린 폴더와 그 안의 하위 폴더 / 사진 목록을 관리합니다.
@@ -12,8 +13,12 @@ final class FolderBrowser: ObservableObject {
     @Published private(set) var isLoading = false
 
     @Published var selectedPhoto: URL?
-    /// 편집 화면에 열려 있는 사진. nil이면 목록 화면을 보여줍니다.
+    /// 편집 중인 사진
     @Published private(set) var openedPhoto: URL?
+    /// 편집 중인 사진의 편집 상태 (사진 편집 / 누끼 탭이 함께 사용)
+    @Published private(set) var editor: PhotoEditor?
+    /// 상단 탭
+    @Published var tab: AppTab = .viewer
 
     /// 편집 화면에 저장하지 않은 변경사항이 있는지 (편집 화면이 갱신합니다)
     @Published var hasUnsavedEdits = false
@@ -82,7 +87,8 @@ final class FolderBrowser: ObservableObject {
 
     func open(folder: URL) {
         currentFolder = folder.normalizedFolder
-        openedPhoto = nil
+        closePhoto()
+        tab = .viewer
         selectedPhoto = nil
         subfolders = []
         photos = []
@@ -131,6 +137,7 @@ final class FolderBrowser: ObservableObject {
                 // /var → /private/var 처럼 같은 파일이 다른 경로로 보일 수 있어 이름으로 맞춥니다.
                 openedPhoto = matching(openedPhoto, in: contents.photos)
                 selectedPhoto = matching(selectedPhoto, in: contents.photos)
+                if openedPhoto == nil { closePhoto() }
             case .failure(let error):
                 subfolders = []
                 photos = []
@@ -149,6 +156,11 @@ final class FolderBrowser: ObservableObject {
     struct FolderContents {
         var folders: [URL]
         var photos: [URL]
+    }
+
+    /// 폴더 트리용: 하위 폴더 목록
+    nonisolated static func subfolders(of folder: URL) -> [URL] {
+        (try? scan(folder).folders) ?? []
     }
 
     nonisolated static func scan(_ folder: URL) throws -> FolderContents {
@@ -179,13 +191,32 @@ final class FolderBrowser: ObservableObject {
         return photos.firstIndex(of: openedPhoto)
     }
 
-    func openPhoto(_ url: URL) {
+    /// 사진을 편집기로 엽니다. 이미 열려 있는 사진이면 편집 상태를 그대로 둡니다.
+    func openPhoto(_ url: URL, in tab: AppTab = .editor) {
         selectedPhoto = url
-        openedPhoto = url
+        if openedPhoto != url || editor == nil {
+            openedPhoto = url
+            let editor = PhotoEditor(url: url)
+            self.editor = editor
+            hasUnsavedEdits = false
+            Task { await editor.load() }
+        }
+        self.tab = tab
     }
 
     func closePhoto() {
         openedPhoto = nil
+        editor = nil
+        hasUnsavedEdits = false
+    }
+
+    /// 탭 전환. 편집 탭으로 갈 때 열린 사진이 없으면 선택된 사진(없으면 첫 사진)을 엽니다.
+    func switchTab(_ tab: AppTab) {
+        if tab != .viewer, editor == nil, let photo = selectedPhoto ?? photos.first {
+            openPhoto(photo, in: tab)
+        } else {
+            self.tab = tab
+        }
     }
 
     func canMove(by offset: Int) -> Bool {
@@ -195,7 +226,7 @@ final class FolderBrowser: ObservableObject {
 
     func move(by offset: Int) {
         guard let index = openedPhotoIndex, photos.indices.contains(index + offset) else { return }
-        openPhoto(photos[index + offset])
+        openPhoto(photos[index + offset], in: tab == .viewer ? .editor : tab)
     }
 
     /// 저장하지 않은 편집이 있으면 사용자에게 먼저 확인합니다.
@@ -225,6 +256,36 @@ final class FolderBrowser: ObservableObject {
 
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
+enum AppTab: String, CaseIterable, Identifiable {
+    case viewer, editor, cutout
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .viewer: return "뷰어"
+        case .editor: return "사진 편집"
+        case .cutout: return "누끼"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .viewer: return "photo.on.rectangle.angled"
+        case .editor: return "slider.horizontal.3"
+        case .cutout: return "scissors"
+        }
+    }
+
+    var key: KeyEquivalent {
+        switch self {
+        case .viewer: return "1"
+        case .editor: return "2"
+        case .cutout: return "3"
+        }
     }
 }
 

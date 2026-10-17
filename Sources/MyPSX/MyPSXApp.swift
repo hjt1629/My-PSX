@@ -22,9 +22,11 @@ struct MyPSXApp: App {
         WindowGroup("My PSX") {
             ContentView()
                 .environmentObject(browser)
-                .frame(minWidth: 900, minHeight: 600)
+                .frame(minWidth: 960, minHeight: 620)
+                .preferredColorScheme(.dark)
         }
-        .defaultSize(width: 1200, height: 800)
+        .defaultSize(width: 1280, height: 820)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("폴더 열기…") { browser.chooseFolder() }

@@ -59,6 +59,44 @@ final class AppFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTabsShareTheOpenEditor() async throws {
+        let browser = FolderBrowser(launchArguments: ["MyPSX", folder.path])
+        try await waitUntil { !browser.isLoading && browser.photos.count == 2 }
+        XCTAssertEqual(browser.tab, .viewer)
+        XCTAssertNil(browser.editor)
+
+        // 사진 없이 편집 탭으로 가면 선택된 사진(없으면 첫 사진)을 엽니다.
+        browser.switchTab(.editor)
+        XCTAssertEqual(browser.tab, .editor)
+        let editor = try XCTUnwrap(browser.editor)
+        XCTAssertEqual(editor.sourceURL.lastPathComponent, "photo2.png")
+        try await waitUntil { editor.image != nil }
+
+        // 뷰어 / 누끼 탭을 오가도 같은 편집 상태를 유지합니다.
+        editor.rotate(clockwise: true)
+        try await waitForIdle(editor)
+        browser.switchTab(.viewer)
+        browser.switchTab(.cutout)
+        XCTAssertTrue(browser.editor === editor)
+        XCTAssertTrue(editor.isModified)
+
+        // 같은 사진을 다시 열어도 편집이 사라지지 않습니다.
+        browser.openPhoto(editor.sourceURL)
+        XCTAssertTrue(browser.editor === editor)
+
+        // 다른 사진을 열면 새 편집 상태가 됩니다.
+        browser.move(by: 1)
+        XCTAssertFalse(browser.editor === editor)
+        XCTAssertEqual(browser.editor?.sourceURL.lastPathComponent, "photo10.jpg")
+        XCTAssertEqual(browser.tab, .cutout)
+
+        // 다른 폴더를 열면 편집기를 닫고 뷰어로 돌아갑니다.
+        browser.open(folder: folder.appendingPathComponent("하위 폴더"))
+        XCTAssertNil(browser.editor)
+        XCTAssertEqual(browser.tab, .viewer)
+    }
+
+    @MainActor
     func testUnsavedEditsAskBeforeNavigating() {
         let browser = FolderBrowser(launchArguments: ["MyPSX", folder.path])
         var navigated = false
@@ -150,6 +188,27 @@ final class AppFlowTests: XCTestCase {
         let original = try ImageLoader.loadFullImage(source)
         XCTAssertEqual(original.width, 40)
         XCTAssertEqual(original.height, 20)
+    }
+
+    @MainActor
+    func testRevertAndFillBackground() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo2.png"))
+        await editor.load()
+        let original = try XCTUnwrap(editor.image)
+
+        editor.resize(width: 10, height: 10)
+        try await waitForIdle(editor)
+        editor.revertToSaved()
+        XCTAssertTrue(editor.image === original)
+        XCTAssertFalse(editor.isModified)
+        // 원래대로도 실행 취소할 수 있습니다.
+        editor.undo()
+        XCTAssertEqual(editor.image?.width, 10)
+
+        editor.fillBackground(CGColor(gray: 1, alpha: 1))
+        try await waitForIdle(editor)
+        XCTAssertEqual(editor.image?.hasAlpha, false)
+        XCTAssertFalse(editor.hasTransparency)
     }
 
     @MainActor
