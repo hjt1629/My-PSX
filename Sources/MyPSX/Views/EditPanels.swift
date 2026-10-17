@@ -27,41 +27,59 @@ struct EditPanel: View {
 
     private var toolList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                PanelHeader(title: "기본")
-                ToolRow(title: "자르기", systemImage: "crop", shortcut: "⌘K") {
-                    guard let image = editor.image else { return }
-                    editor.beginCrop(aspect: cropAspect.ratio(for: image.pixelSize))
+            VStack(alignment: .leading, spacing: 0) {
+                // PhotoScape X처럼 위쪽에 아이콘 탭
+                HStack {
+                    VStack(spacing: 3) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 18))
+                        Text("편집").font(.system(size: 10))
+                    }
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 52)
+                    Spacer()
                 }
-                ToolRow(title: "크기 조절", systemImage: "arrow.up.left.and.arrow.down.right", shortcut: "⌥⌘I") {
-                    tool = .resize
-                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                PanelDivider(vertical: false)
 
-                PanelHeader(title: "회전")
-                HStack(spacing: 6) {
-                    RotateButton(title: "왼쪽 90°", systemImage: "rotate.left") {
+                // 회전 / 반전
+                HStack(spacing: 4) {
+                    IconToolButton(systemImage: "rotate.left", help: "왼쪽으로 90° 회전 (⌘[)") {
                         editor.rotate(clockwise: false)
                     }
-                    .help("왼쪽으로 회전 (⌘[)")
-                    RotateButton(title: "오른쪽 90°", systemImage: "rotate.right") {
+                    IconToolButton(systemImage: "rotate.right", help: "오른쪽으로 90° 회전 (⌘])") {
                         editor.rotate(clockwise: true)
                     }
-                    .help("오른쪽으로 회전 (⌘])")
-                    RotateButton(title: "좌우 반전",
-                                 systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") {
+                    IconToolButton(systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right",
+                                   help: "좌우 반전") {
                         editor.flip(horizontal: true)
                     }
-                    RotateButton(title: "상하 반전",
-                                 systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down") {
+                    IconToolButton(systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down",
+                                   help: "상하 반전") {
                         editor.flip(horizontal: false)
                     }
                 }
                 .padding(.horizontal, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
 
-                PanelHeader(title: "도구")
-                ToolRow(title: "배경 제거 (누끼)", systemImage: "scissors", shortcut: "⇧⌘B") {
-                    onRemoveBackground()
+                // 도구 (2열)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)],
+                          spacing: 4) {
+                    ToolRow(title: "크기 조절", systemImage: "arrow.up.left.and.arrow.down.right",
+                            help: "크기 조절 (⌥⌘I)") {
+                        tool = .resize
+                    }
+                    ToolRow(title: "자르기", systemImage: "crop", help: "자르기 (⌘K)") {
+                        guard let image = editor.image else { return }
+                        editor.beginCrop(aspect: cropAspect.ratio(for: image.pixelSize))
+                    }
+                    ToolRow(title: "오려내기", systemImage: "scissors", help: "배경 제거 (⇧⌘B)") {
+                        onRemoveBackground()
+                    }
                 }
+                .padding(.horizontal, 6)
             }
             .padding(.bottom, 12)
         }
@@ -69,60 +87,49 @@ struct EditPanel: View {
     }
 }
 
-/// 패널 안의 한 줄짜리 큰 버튼
-private struct ToolRow: View {
-    let title: String
+/// 회전 줄의 아이콘 버튼
+private struct IconToolButton: View {
     let systemImage: String
-    var shortcut: String?
+    let help: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14))
-                    .frame(width: 22)
-                Text(title)
-                    .font(.system(size: 13))
-                Spacer()
-                if let shortcut {
-                    Text(shortcut)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.secondaryText)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .contentShape(Rectangle())
+            Image(systemName: systemImage)
+                .font(.system(size: 17))
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .contentShape(Rectangle())
         }
         .buttonStyle(DarkButtonStyle())
-        .padding(.horizontal, 6)
+        .help(help)
     }
 }
 
-/// 회전 영역의 네모 버튼
-private struct RotateButton: View {
+/// 아이콘 + 이름 도구 버튼 (2열 격자에 들어감)
+private struct ToolRow: View {
     let title: String
     let systemImage: String
+    var help: String?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 5) {
+            HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17))
-                    .frame(height: 20)
+                    .font(.system(size: 16))
+                    .frame(width: 22)
                 Text(title)
-                    .font(.system(size: 10))
+                    .font(.system(size: 12))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(DarkButtonStyle())
+        .help(help ?? title)
     }
 }
 
@@ -342,7 +349,7 @@ private struct ResizePanel: View {
     }
 }
 
-// MARK: - 누끼 탭의 오른쪽 패널
+// MARK: - 오려내기 탭의 오른쪽 패널
 
 struct CutOutPanel: View {
     @ObservedObject var editor: PhotoEditor
@@ -353,7 +360,7 @@ struct CutOutPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PanelHeader(title: "누끼 (배경 제거)")
+                PanelHeader(title: "오려내기 (배경 제거)")
                 Text("사진 속 사람·동물·물체를 자동으로 찾아 배경을 지웁니다. macOS에 들어 있는 기능이라 인터넷 연결이 필요 없습니다.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.secondaryText)

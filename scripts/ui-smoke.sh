@@ -56,14 +56,15 @@ key "]" "using command down";                  shot 09-rotate-right
 key "[" "using command down"
 key "[" "using command down";                  shot 10-rotate-left-twice
 
-# 자르기: 필름스트립 오른쪽, 사진 바깥 왼쪽 위 여백에서 가운데로 드래그
+# 자르기: 사진 바깥 왼쪽 위 여백에서 가운데로 드래그
 key "k" "using command down";                  shot 11-crop-mode
 BOUNDS="$(window_bounds)"
 echo "창: $BOUNDS"
 if command -v cliclick >/dev/null && [ -n "$BOUNDS" ]; then
     IFS=', ' read -r WX WY WW WH <<< "$BOUNDS"
-    SX=$((WX + 135)); SY=$((WY + 95))
-    EX=$((WX + 120 + (WW - 390) / 2)); EY=$((WY + WH / 2))
+    # 왼쪽 탐색 패널(280) 오른쪽, 위쪽 탭 줄·제목 막대 아래의 빈 여백에서 시작
+    SX=$((WX + 300)); SY=$((WY + 125))
+    EX=$((WX + 280 + (WW - 550) / 2)); EY=$((WY + WH / 2))
     cliclick "dd:$SX,$SY" "dm:$(( (SX + EX) / 2 )),$(( (SY + EY) / 2 ))" "dm:$EX,$EY" "du:$EX,$EY"
 fi
 shot 12-crop-dragged
@@ -75,7 +76,7 @@ key "a" "using command down"
 key "300" "";                                  shot 15-resize-typed
 keycode 36;                                    shot 16-resized 2
 
-# 누끼 탭: 배경 제거 (가상 머신에서는 실패하고 오류 창이 뜸 → 닫기)
+# 오려내기 탭: 배경 제거 (가상 머신에서는 실패하고 오류 창이 뜸 → 닫기)
 key "b" "using {command down, shift down}";    shot 17-cutout-removed 10
 keycode 36;                                    shot 18-cutout-panel 1
 
@@ -91,7 +92,7 @@ keycode 53;                                    shot 24-back-to-viewer 3
 
 # 좁은 창에서도 도구 막대가 잘리지 않는지 (사진 편집 탭으로)
 key "2" "using command down";                  sleep 2
-osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to set size of front window to {960, 620}" \
+osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to set size of front window to {1000, 640}" \
     || echo "⚠️ 창 크기 변경 실패"
 shot 25-narrow-window 2
 quit_app

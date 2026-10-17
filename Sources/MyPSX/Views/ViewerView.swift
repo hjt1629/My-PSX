@@ -7,8 +7,8 @@ struct ViewerView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            FolderTreeView()
-                .frame(width: 250)
+            FolderTreePane()
+                .frame(width: 280)
             PanelDivider()
             VStack(spacing: 0) {
                 PathBar()
@@ -27,38 +27,74 @@ struct ViewerView: View {
 
 // MARK: - 폴더 트리
 
-private struct FolderTreeView: View {
+/// 왼쪽 폴더 트리. 위쪽 "폴더 | 즐겨찾기"로 보기를 바꿉니다. (뷰어 / 사진 편집 탭이 함께 사용)
+struct FolderTreePane: View {
     @EnvironmentObject private var browser: FolderBrowser
+    var showsOpenButton = true
+    @AppStorage("folderTreeMode") private var mode = TreeMode.folders.rawValue
+
+    enum TreeMode: String, CaseIterable {
+        case folders, favorites
+
+        var title: String {
+            switch self {
+            case .folders: return "폴더"
+            case .favorites: return "즐겨찾기"
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(Array(TreeMode.allCases.enumerated()), id: \.element) { index, item in
+                    if index > 0 {
+                        Color.white.opacity(0.15).frame(width: 1, height: 12)
+                    }
+                    Button {
+                        mode = item.rawValue
+                    } label: {
+                        Text(item.title)
+                            .font(.system(size: 12, weight: mode == item.rawValue ? .semibold : .regular))
+                            .foregroundStyle(mode == item.rawValue ? Theme.accent : Theme.secondaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+            PanelDivider(vertical: false)
+
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        PanelHeader(title: "즐겨찾기")
-                        if browser.favorites.isEmpty {
-                            Text("폴더를 연 뒤 아래 ☆ 버튼으로 추가하세요")
-                                .font(.system(size: 11))
-                                .foregroundStyle(Theme.secondaryText)
-                                .padding(.horizontal, 14)
-                                .padding(.bottom, 4)
-                        }
-                        ForEach(browser.favorites, id: \.self) { url in
-                            row(url, icon: "star.fill", iconColor: .yellow)
-                        }
+                        if mode == TreeMode.favorites.rawValue {
+                            if browser.favorites.isEmpty {
+                                Text("폴더에서 마우스 오른쪽 버튼 → 즐겨찾기에 추가")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .padding(14)
+                            }
+                            ForEach(browser.favorites, id: \.self) { url in
+                                row(url, icon: "star.fill", iconColor: .yellow)
+                            }
+                        } else {
+                            PanelHeader(title: "위치")
+                            ForEach(browser.standardLocations, id: \.self) { url in
+                                row(url, icon: icon(for: url), iconColor: Theme.folder)
+                            }
 
-                        PanelHeader(title: "위치")
-                        ForEach(browser.standardLocations, id: \.self) { url in
-                            row(url, icon: icon(for: url), iconColor: Theme.folder)
-                        }
-
-                        PanelHeader(title: "볼륨")
-                        ForEach(browser.volumes, id: \.self) { url in
-                            row(url, icon: url.path == "/" ? "internaldrive.fill" : "externaldrive.fill",
-                                iconColor: Theme.secondaryText)
+                            PanelHeader(title: "볼륨")
+                            ForEach(browser.volumes, id: \.self) { url in
+                                row(url, icon: url.path == "/" ? "internaldrive.fill" : "externaldrive.fill",
+                                    iconColor: Theme.secondaryText)
+                            }
                         }
                     }
-                    .padding(.bottom, 8)
+                    .padding(.vertical, 4)
                 }
                 .onChange(of: browser.currentFolder) { _, folder in
                     scroll(proxy, to: folder)
@@ -66,17 +102,19 @@ private struct FolderTreeView: View {
                 .onAppear { scroll(proxy, to: browser.currentFolder) }
             }
 
-            PanelDivider(vertical: false)
-            Button {
-                browser.chooseFolder()
-            } label: {
-                Label("폴더 열기…", systemImage: "folder.badge.plus")
-                    .font(.system(size: 12))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
+            if showsOpenButton {
+                PanelDivider(vertical: false)
+                Button {
+                    browser.chooseFolder()
+                } label: {
+                    Label("폴더 열기…", systemImage: "folder.badge.plus")
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                }
+                .buttonStyle(DarkButtonStyle())
+                .padding(8)
             }
-            .buttonStyle(DarkButtonStyle())
-            .padding(8)
         }
         .background(Theme.panel)
     }
@@ -89,7 +127,9 @@ private struct FolderTreeView: View {
     /// 지금 폴더를 품고 있는 가장 가까운 최상위 항목 하나만 자동으로 펼칩니다.
     private var revealRoot: URL? {
         guard let current = browser.currentFolder else { return nil }
-        let roots = browser.favorites + browser.standardLocations + browser.volumes
+        let roots = mode == TreeMode.favorites.rawValue
+            ? browser.favorites
+            : browser.standardLocations + browser.volumes
         return roots
             .filter { $0.contains(current) }
             .max { $0.resolvedPath.count < $1.resolvedPath.count }
@@ -439,7 +479,7 @@ private struct ThumbnailGrid: View {
                                 .contextMenu {
                                     Button("크게 보기") { browser.preview(photo) }
                                     Button("사진 편집") { browser.openPhoto(photo, in: .editor) }
-                                    Button("누끼 (배경 제거)") { browser.openPhoto(photo, in: .cutout) }
+                                    Button("오려내기 (배경 제거)") { browser.openPhoto(photo, in: .cutout) }
                                     Divider()
                                     Button("Finder에서 보기") { browser.revealInFinder(photo) }
                                 }
@@ -640,7 +680,7 @@ private struct PhotoPreview: View {
                     Button {
                         browser.openPhoto(url, in: .cutout)
                     } label: {
-                        Label("누끼", systemImage: AppTab.cutout.systemImage)
+                        Label("오려내기", systemImage: AppTab.cutout.systemImage)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                     }

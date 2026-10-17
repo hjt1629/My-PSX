@@ -51,11 +51,19 @@ final class AppFlowTests: XCTestCase {
         browser.move(by: -1)
         XCTAssertEqual(browser.openedPhoto?.lastPathComponent, "photo2.png")
 
-        // 하위 폴더로 이동하면 편집 화면이 닫힙니다.
+        // 다른 폴더로 가도 편집 중인 사진은 그대로입니다. (그 폴더 목록에는 없음)
+        let editor = try XCTUnwrap(browser.editor)
         browser.open(folder: folder.appendingPathComponent("하위 폴더"))
-        XCTAssertNil(browser.openedPhoto)
+        try await waitUntil { !browser.isLoading }
+        XCTAssertTrue(browser.editor === editor)
+        XCTAssertEqual(browser.openedPhoto?.lastPathComponent, "photo2.png")
+        XCTAssertNil(browser.openedPhotoIndex)
+        XCTAssertFalse(browser.canMove(by: 1))
+
         browser.goUp()
         XCTAssertEqual(browser.currentFolder?.path, folder.standardizedFileURL.path)
+        try await waitUntil { !browser.isLoading && browser.photos.count == 2 }
+        XCTAssertEqual(browser.openedPhotoIndex, 0)
     }
 
     @MainActor
@@ -72,7 +80,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(editor.sourceURL.lastPathComponent, "photo2.png")
         try await waitUntil { editor.image != nil }
 
-        // 뷰어 / 누끼 탭을 오가도 같은 편집 상태를 유지합니다.
+        // 뷰어 / 오려내기 탭을 오가도 같은 편집 상태를 유지합니다.
         editor.rotate(clockwise: true)
         try await waitForIdle(editor)
         browser.switchTab(.viewer)
@@ -90,10 +98,16 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(browser.editor?.sourceURL.lastPathComponent, "photo10.jpg")
         XCTAssertEqual(browser.tab, .cutout)
 
-        // 다른 폴더를 열면 편집기를 닫고 뷰어로 돌아갑니다.
+        // 다른 폴더를 열어도 편집기와 탭은 그대로입니다.
+        let current = browser.editor
         browser.open(folder: folder.appendingPathComponent("하위 폴더"))
+        XCTAssertTrue(browser.editor === current)
+        XCTAssertEqual(browser.tab, .cutout)
+
+        // 닫으면 편집기가 사라집니다.
+        browser.closePhoto()
         XCTAssertNil(browser.editor)
-        XCTAssertEqual(browser.tab, .viewer)
+        XCTAssertNil(browser.openedPhoto)
     }
 
     @MainActor

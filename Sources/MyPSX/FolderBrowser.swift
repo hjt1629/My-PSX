@@ -37,7 +37,7 @@ final class FolderBrowser: ObservableObject {
     private(set) var fileInfo: [URL: FileInfo] = [:]
     /// 편집 중인 사진
     @Published private(set) var openedPhoto: URL?
-    /// 편집 중인 사진의 편집 상태 (사진 편집 / 누끼 탭이 함께 사용)
+    /// 편집 중인 사진의 편집 상태 (사진 편집 / 오려내기 탭이 함께 사용)
     @Published private(set) var editor: PhotoEditor?
     /// 상단 탭
     @Published var tab: AppTab = .viewer
@@ -129,8 +129,7 @@ final class FolderBrowser: ObservableObject {
             forwardStack.removeAll()
         }
         currentFolder = target
-        closePhoto()
-        tab = .viewer
+        // 편집 중인 사진은 다른 폴더로 가도 그대로 둡니다. (PhotoScape X와 같은 방식)
         selectedPhoto = nil
         previewPhoto = nil
         subfolders = []
@@ -194,11 +193,10 @@ final class FolderBrowser: ObservableObject {
                 subfolders = contents.folders
                 fileInfo = contents.info
                 photos = FolderBrowser.sorted(contents.photos, info: contents.info, by: sort, ascending: sortAscending)
-                // /var → /private/var 처럼 같은 파일이 다른 경로로 보일 수 있어 이름으로 맞춥니다.
-                openedPhoto = matching(openedPhoto, in: photos)
+                // /var → /private/var 처럼 같은 파일이 다른 경로로 보일 수 있어 실제 경로로 맞춥니다.
+                if let match = matching(openedPhoto, in: photos) { openedPhoto = match }
                 selectedPhoto = matching(selectedPhoto, in: photos)
                 previewPhoto = matching(previewPhoto, in: photos)
-                if openedPhoto == nil { closePhoto() }
             case .failure(let error):
                 subfolders = []
                 photos = []
@@ -212,7 +210,8 @@ final class FolderBrowser: ObservableObject {
     private func matching(_ url: URL?, in photos: [URL]) -> URL? {
         guard let url else { return nil }
         if photos.contains(url) { return url }
-        return photos.first { $0.lastPathComponent == url.lastPathComponent }
+        let path = url.resolvedPath
+        return photos.first { $0.resolvedPath == path }
     }
 
     struct FolderContents {
@@ -407,9 +406,9 @@ enum AppTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .viewer: return "뷰어"
+        case .viewer: return "사진 뷰어"
         case .editor: return "사진 편집"
-        case .cutout: return "누끼"
+        case .cutout: return "오려내기"
         }
     }
 

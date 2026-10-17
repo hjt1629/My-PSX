@@ -2,30 +2,38 @@ import AppKit
 import PSXCore
 import SwiftUI
 
-/// 사진 편집 / 누끼 탭: 왼쪽 필름스트립 + 가운데 캔버스 + 오른쪽 도구 패널 + 아래 막대
+/// 사진 편집 / 오려내기 탭: 왼쪽 파일 탐색(폴더 트리 + 썸네일) + 가운데 사진 + 오른쪽 도구 패널
 struct EditorWorkspace: View {
     @EnvironmentObject private var browser: FolderBrowser
 
     var body: some View {
-        if let editor = browser.editor {
-            EditorContent(editor: editor)
-                .id(ObjectIdentifier(editor))
-        } else {
-            VStack(spacing: 10) {
-                Image(systemName: "photo")
-                    .font(.system(size: 40))
-                    .foregroundStyle(Theme.secondaryText)
-                Text("편집할 사진이 없습니다")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Theme.text)
-                Text("뷰어에서 사진을 더블클릭하세요.")
-                    .foregroundStyle(Theme.secondaryText)
-                Button("뷰어로 가기") { browser.tab = .viewer }
-                    .buttonStyle(DarkButtonStyle(prominent: true))
-                    .padding(.top, 6)
+        HStack(spacing: 0) {
+            EditorBrowserPane()
+                .frame(width: 280)
+            PanelDivider()
+            if let editor = browser.editor {
+                EditorContent(editor: editor)
+                    .id(ObjectIdentifier(editor))
+            } else {
+                VStack(spacing: 10) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 40))
+                        .foregroundStyle(Theme.secondaryText)
+                    Text("편집할 사진을 고르세요")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                    Text("왼쪽 썸네일을 누르면 여기에서 편집합니다.")
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.canvas)
+                .background {
+                    Button("") { browser.tab = .viewer }
+                        .keyboardShortcut(.escape, modifiers: [])
+                        .opacity(0)
+                        .allowsHitTesting(false)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.canvas)
         }
     }
 }
@@ -46,10 +54,9 @@ private struct EditorContent: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Filmstrip()
-                .frame(width: 112)
-            PanelDivider()
             VStack(spacing: 0) {
+                topBar
+                PanelDivider(vertical: false)
                 EditorCanvas(editor: editor, cropAspect: cropAspect, showingOriginal: showingOriginal)
                 PanelDivider(vertical: false)
                 bottomBar
@@ -105,22 +112,55 @@ private struct EditorContent: View {
 
     private var isToolActive: Bool { editor.mode == .crop || tool != nil }
 
+    // MARK: 위 막대 (✕ < > 파일 이름)
+
+    private var topBar: some View {
+        HStack(spacing: 4) {
+            topButton("xmark", help: "사진 닫기") {
+                browser.requestNavigation { browser.closePhoto() }
+            }
+            topButton("chevron.left", help: "이전 사진 (←)") { navigate(-1) }
+                .disabled(!browser.canMove(by: -1) || isToolActive)
+            topButton("chevron.right", help: "다음 사진 (→)") { navigate(1) }
+                .disabled(!browser.canMove(by: 1) || isToolActive)
+            Text(editor.sourceURL.lastPathComponent)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(.leading, 6)
+                .help(editor.sourceURL.path)
+            if editor.isModified {
+                Text("· 수정됨")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Theme.panel)
+    }
+
+    private func topButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 28, height: 24)
+        }
+        .buttonStyle(DarkButtonStyle())
+        .help(help)
+    }
+
     // MARK: 아래 막대
 
     private var bottomBar: some View {
         HStack(spacing: 6) {
-            Text(editor.sourceURL.lastPathComponent)
-                .foregroundStyle(Theme.text)
-                .lineLimit(1)
-                .truncationMode(.middle)
             if let image = editor.image {
                 Text("\(image.width) × \(image.height)").monospacedDigit().lineLimit(1)
             }
             if let index = browser.openedPhotoIndex {
                 Text("· \(index + 1) / \(browser.photos.count)").monospacedDigit().lineLimit(1)
-            }
-            if editor.isModified {
-                Text("· 수정됨").foregroundStyle(.orange).lineLimit(1)
             }
 
             Spacer(minLength: 12)
@@ -332,51 +372,110 @@ private struct BarButton: View {
     }
 }
 
-// MARK: - 필름스트립
+// MARK: - 왼쪽 파일 탐색
 
-/// 왼쪽: 같은 폴더의 사진 목록
-private struct Filmstrip: View {
+/// 사진 편집 탭의 왼쪽: 위쪽 폴더 트리 + 아래쪽 현재 폴더 썸네일 + 맨 아래 아이콘 줄
+private struct EditorBrowserPane: View {
     @EnvironmentObject private var browser: FolderBrowser
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(browser.photos, id: \.self) { url in
-                        let isOpen = url == browser.openedPhoto
-                        ThumbnailView(url: url)
-                            .frame(width: 84, height: 84)
-                            .padding(5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(isOpen ? Theme.accent.opacity(0.35) : .clear)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(isOpen ? Theme.accent : .clear, lineWidth: 2)
-                            )
-                            .contentShape(Rectangle())
-                            .id(url)
-                            .help(url.lastPathComponent)
-                            .onTapGesture {
-                                guard !isOpen else { return }
-                                browser.requestNavigation { browser.openPhoto(url, in: browser.tab) }
-                            }
+        VStack(spacing: 0) {
+            VSplitView {
+                FolderTreePane(showsOpenButton: false)
+                    .frame(minHeight: 120, idealHeight: 360, maxHeight: .infinity)
+                EditorThumbnails()
+                    .frame(minHeight: 120, idealHeight: 300, maxHeight: .infinity)
+            }
+            PanelDivider(vertical: false)
+            HStack(spacing: 2) {
+                if let folder = browser.currentFolder {
+                    paneButton(browser.isFavorite(folder) ? "star.fill" : "star",
+                               help: browser.isFavorite(folder) ? "즐겨찾기에서 제거" : "즐겨찾기에 추가",
+                               tint: browser.isFavorite(folder) ? .yellow : Theme.text) {
+                        browser.toggleFavorite(folder)
                     }
                 }
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
+                paneButton("arrow.clockwise", help: "새로고침") { browser.reload() }
+                paneButton("arrow.left", help: "뒤로") { browser.goBack() }
+                    .disabled(!browser.canGoBack)
+                paneButton("arrow.right", help: "앞으로") { browser.goForward() }
+                    .disabled(!browser.canGoForward)
+                paneButton("arrow.up", help: "상위 폴더") { browser.goUp() }
+                    .disabled(!browser.canGoUp)
+                Spacer()
+                paneButton("folder.badge.plus", help: "폴더 열기…") { browser.chooseFolder() }
             }
-            .onAppear { scroll(proxy, animated: false) }
-            .onChange(of: browser.openedPhoto) { _, _ in scroll(proxy, animated: true) }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 5)
         }
         .background(Theme.panel)
     }
 
+    private func paneButton(_ systemImage: String, help: String, tint: Color = Theme.text,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 26)
+        }
+        .buttonStyle(DarkButtonStyle())
+        .help(help)
+    }
+}
+
+/// 현재 폴더의 사진 썸네일. 누르면 그 사진을 편집합니다.
+private struct EditorThumbnails: View {
+    @EnvironmentObject private var browser: FolderBrowser
+
+    var body: some View {
+        Group {
+            if browser.photos.isEmpty {
+                Text(browser.isLoading ? "불러오는 중…" : "이 폴더에는 사진이 없습니다")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.secondaryText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 58), spacing: 6)], spacing: 6) {
+                            ForEach(browser.photos, id: \.self) { url in
+                                let isOpen = url == browser.openedPhoto
+                                ThumbnailView(url: url)
+                                    .frame(width: 54, height: 54)
+                                    .padding(3)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(isOpen ? Theme.accent.opacity(0.3) : Color.white.opacity(0.04))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .stroke(isOpen ? Theme.accent : Color.white.opacity(0.08),
+                                                    lineWidth: isOpen ? 2 : 1)
+                                    )
+                                    .contentShape(Rectangle())
+                                    .id(url)
+                                    .help(url.lastPathComponent)
+                                    .onTapGesture {
+                                        guard !isOpen else { return }
+                                        browser.requestNavigation { browser.openPhoto(url, in: browser.tab) }
+                                    }
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .onAppear { scroll(proxy, animated: false) }
+                    .onChange(of: browser.openedPhoto) { _, _ in scroll(proxy, animated: true) }
+                }
+            }
+        }
+        .background(Color.black.opacity(0.12))
+    }
+
     private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
-        guard let url = browser.openedPhoto else { return }
+        guard let url = browser.openedPhoto, browser.photos.contains(url) else { return }
         if animated {
-            withAnimation { proxy.scrollTo(url, anchor: .center) }
+            withAnimation { proxy.scrollTo(url) }
         } else {
             proxy.scrollTo(url, anchor: .center)
         }
