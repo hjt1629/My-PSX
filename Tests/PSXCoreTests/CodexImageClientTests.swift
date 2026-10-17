@@ -33,9 +33,13 @@ final class CodexImageClientTests: XCTestCase {
         let result = try await makeClient(runner).edit(original, prompt: "배경을 흰색으로", transparentBackground: false)
 
         let call = try XCTUnwrap(runner.calls.first)
-        XCTAssertEqual(Array(call.arguments.prefix(4)), ["codex", "exec", "--skip-git-repo-check", "--full-auto"])
-        XCTAssertEqual(call.arguments[4], "-C")
-        XCTAssertEqual(call.arguments[5], call.directory.path)
+        XCTAssertEqual(Array(call.arguments.prefix(5)),
+                       ["codex", "exec", "--skip-git-repo-check", "--sandbox", "workspace-write"])
+        XCTAssertFalse(call.arguments.contains("--full-auto"))
+        XCTAssertEqual(call.arguments[5], "--image")
+        XCTAssertTrue(call.arguments[6].hasSuffix("/input.png"))
+        XCTAssertEqual(call.arguments[7], "-C")
+        XCTAssertEqual(call.arguments[8], call.directory.path)
         let prompt = try XCTUnwrap(call.arguments.last)
         XCTAssertTrue(prompt.contains("배경을 흰색으로"))
         XCTAssertTrue(prompt.contains("./input.png"))

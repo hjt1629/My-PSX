@@ -80,7 +80,10 @@ public struct CodexImageClient: AIImageEditor {
     static func arguments(directory: URL, prompt: String) -> [String] {
         ["codex", "exec",
          "--skip-git-repo-check",
-         "--full-auto",
+         // --full-auto 는 최신 Codex에서 없어졌습니다. exec 는 원래 승인을 묻지 않으므로 샌드박스만 지정합니다.
+         "--sandbox", "workspace-write",
+         // -i 는 여러 값을 받으므로 바로 뒤에 다른 옵션(-C)이 와야 지시문을 삼키지 않습니다.
+         "--image", directory.appendingPathComponent(inputName).path,
          "-C", directory.path,
          instructions(for: prompt)]
     }
