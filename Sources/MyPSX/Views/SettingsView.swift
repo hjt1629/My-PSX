@@ -29,8 +29,11 @@ struct SettingsView: View {
 
             Section {
                 HStack {
-                    SecureField(settings.hasAPIKey ? "저장됨 — 바꾸려면 새 키 입력" : "sk-...", text: $keyInput)
-                        .textFieldStyle(.roundedBorder)
+                    SecureField(text: $keyInput,
+                                prompt: Text(settings.hasAPIKey ? "저장됨 — 바꾸려면 새 키 입력" : "sk-...")) {
+                        Text("API 키")
+                    }
+                    .textFieldStyle(.roundedBorder)
                     Button("저장") { save() }
                         .disabled(keyInput.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
@@ -53,8 +56,10 @@ struct SettingsView: View {
 
             Section {
                 HStack {
-                    TextField("모델", text: $settings.model)
-                        .textFieldStyle(.roundedBorder)
+                    TextField(text: $settings.model, prompt: Text(OpenAIImageClient.defaultModel)) {
+                        Text("모델")
+                    }
+                    .textFieldStyle(.roundedBorder)
                     Menu("추천") {
                         ForEach(GPTSettings.suggestedModels, id: \.self) { name in
                             Button(name) { settings.model = name }
@@ -88,7 +93,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520)
+        .frame(width: 520, height: 560)
         .padding(.vertical, 8)
     }
 
