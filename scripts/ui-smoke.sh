@@ -82,7 +82,7 @@ if command -v cliclick >/dev/null && [ -n "$BOUNDS" ]; then
     IFS=', ' read -r WX WY WW WH <<< "$BOUNDS"
     PX=$((WX + WW - 270))
     cliclick "c:$((PX + 91)),$((WY + 92))";       shot 16a-adjust-panel 1
-    SLY=$((WY + 182))
+    SLY=$((WY + 171))   # 색온도 슬라이더
     cliclick "dd:$((PX + 135)),$SLY" "dm:$((PX + 180)),$SLY" "dm:$((PX + 215)),$SLY" "du:$((PX + 215)),$SLY"
                                                    shot 16b-adjust-preview 2
     keycode 36;                                    shot 16c-adjust-applied 2

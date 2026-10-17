@@ -557,7 +557,8 @@ private struct AdjustSlider: View {
                     .foregroundStyle(value == 0 ? Theme.secondaryText : Theme.accent)
                     .onTapGesture(count: 2) { value = 0 }
             }
-            Slider(value: $value, in: range, step: 1)
+            // step을 주면 macOS가 눈금 200여 개를 그려 느려지므로, 값만 정수로 맞춥니다.
+            Slider(value: Binding(get: { value }, set: { value = $0.rounded() }), in: range)
                 .controlSize(.mini)
             if let track {
                 LinearGradient(colors: track, startPoint: .leading, endPoint: .trailing)
