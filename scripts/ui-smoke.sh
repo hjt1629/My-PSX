@@ -27,6 +27,13 @@ launch() {
         || echo "⚠️ 앱을 앞으로 가져오지 못함"
     sleep 1
 }
+# 앱의 CPU / 메모리 사용량 기록 (가상 머신이라 실제 맥과 차이가 있음)
+usage() {
+    [ -n "$PID" ] || return 0
+    local rss cpu
+    read -r rss cpu <<< "$(ps -o rss=,%cpu= -p "$PID" 2>/dev/null)"
+    [ -n "$rss" ] && echo "📊 사용량 [$1] 메모리 $((rss / 1024)) MB · CPU ${cpu}%"
+}
 quit_app() { [ -n "$PID" ] && kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; PID=""; }
 shot() { sleep "${2:-1.5}"; screencapture -x -t jpg "$OUT/$1.jpg" && echo "📸 $1" || echo "⚠️ 스크린샷 실패: $1"; }
 key() { osascript -e "tell application \"System Events\" to keystroke \"$1\" ${2:-}" || echo "⚠️ 키 입력 실패: $1 ${2:-}"; }
@@ -39,6 +46,7 @@ window_bounds() {
 launch "$WORK"
 echo "창 위치/크기: $(window_bounds)"
 shot 01-viewer 2
+sleep 3; usage "뷰어 · 가만히 있을 때"
 keycode 124; keycode 124; keycode 125;         shot 02-viewer-keyboard
 keycode 36;                                    shot 03-preview 2
 keycode 124;                                   shot 04-preview-next 2
@@ -51,6 +59,7 @@ quit_app
 # 2. 사진 편집 탭
 launch "$PHOTO"
 shot 08-editor 2
+sleep 3; usage "사진 편집 · 사진 1장 열림"
 
 key "]" "using command down";                  shot 09-rotate-right
 key "[" "using command down"
@@ -97,6 +106,7 @@ if command -v cliclick >/dev/null && [ -n "$BOUNDS" ]; then
     cliclick "dd:$((PX + 135)),$SLY" "dm:$((PX + 180)),$SLY" "dm:$((PX + 215)),$SLY" "du:$((PX + 215)),$SLY"
                                                    shot 16b-adjust-preview 2
     keycode 36;                                    shot 16c-adjust-applied 2
+    usage "조정 적용 직후"
     cliclick "c:$((PX + 147)),$((WY + 92))";       shot 16d-ai-panel 1
     cliclick "c:$((PX + 35)),$((WY + 92))"
 fi
@@ -116,6 +126,7 @@ keycode 36;                                    shot 22-after-save 3
 
 keycode 124;                                   shot 23-next-photo 3
 keycode 53;                                    shot 24-back-to-viewer 3
+usage "편집 여러 번 뒤 뷰어로 돌아옴"
 
 # 좌우 패널 너비 끌어서 조절 (사진 편집 탭)
 key "2" "using command down";                  sleep 2

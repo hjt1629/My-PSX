@@ -14,6 +14,8 @@ final class ThumbnailLoader: @unchecked Sendable {
 
     private init() {
         cache.countLimit = 2000
+        // 썸네일 한 장이 최대 1.6MB라 개수만으로는 수 GB까지 커질 수 있어, 메모리 양으로도 제한합니다.
+        cache.totalCostLimit = 300 * 1024 * 1024
     }
 
     func cachedThumbnail(for url: URL) -> CGImage? {
@@ -25,7 +27,7 @@ final class ThumbnailLoader: @unchecked Sendable {
         let image = await Task.detached(priority: .utility) {
             ImageLoader.thumbnail(for: url, maxPixelSize: Self.pixelSize)
         }.value
-        if let image { cache.setObject(image, forKey: url as NSURL) }
+        if let image { cache.setObject(image, forKey: url as NSURL, cost: image.bytesPerRow * image.height) }
         return image
     }
 

@@ -35,6 +35,8 @@ final class PhotoEditor: ObservableObject {
     @Published private var savedImage: CGImage?
 
     private let historyLimit = 30
+    /// 실행 취소 기록이 쓸 수 있는 메모리 (큰 사진은 단계 수가 줄어듭니다)
+    private let historyMemoryLimit = 600 * 1024 * 1024
     private var isLoading = false
     private var previewBase: CGImage?
     private var previewTask: Task<Void, Never>?
@@ -293,6 +295,15 @@ final class PhotoEditor: ObservableObject {
     // MARK: 내부
 
     /// 무거운 작업은 백그라운드에서 실행하고, 결과를 실행 취소 기록에 넣습니다.
+    /// 기록이 너무 많거나 메모리를 많이 쓰면 오래된 것부터 버립니다. (최소 1단계는 남김)
+    private func trimHistory() {
+        func bytes(_ images: [CGImage]) -> Int { images.reduce(0) { $0 + $1.bytesPerRow * $1.height } }
+        while undoStack.count > historyLimit
+            || (undoStack.count > 1 && bytes(undoStack) + bytes(redoStack) > historyMemoryLimit) {
+            undoStack.removeFirst()
+        }
+    }
+
     private func perform(_ message: String, _ operation: @escaping @Sendable (CGImage) async throws -> CGImage) {
         guard let current = image, !isBusy else { return }
         isBusy = true
@@ -306,8 +317,8 @@ final class PhotoEditor: ObservableObject {
                 let seconds = Date().timeIntervalSince(started)
                 lastTiming = seconds >= 2 ? "걸린 시간 \(Int(seconds.rounded()))초" : nil
                 undoStack.append(current)
-                if undoStack.count > historyLimit { undoStack.removeFirst() }
                 redoStack.removeAll()
+                trimHistory()
                 image = result
             } catch {
                 errorMessage = error.localizedDescription
