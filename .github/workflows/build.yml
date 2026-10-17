@@ -18,6 +18,8 @@ jobs:
         run: swift test
       - name: Package .app
         run: ./scripts/build-app.sh
+        env:
+          BUILD: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/upload-artifact@v4
         with:
           name: MyPSX-app
@@ -32,6 +34,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Package .app
         run: ./scripts/build-app.sh
+        env:
+          BUILD: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Install cliclick
         run: brew install cliclick || true
       - name: Run UI smoke test

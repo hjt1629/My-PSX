@@ -13,6 +13,14 @@ struct SettingsView: View {
         case failure(String)
     }
 
+    /// 예: "0.1.0 (d2a9bca)" — 어떤 빌드를 쓰고 있는지 확인할 때 봅니다.
+    static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "개발용"
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        return build.isEmpty || build == short ? short : "\(short) (\(build))"
+    }
+
     var body: some View {
         Form {
             Section {
@@ -43,6 +51,13 @@ struct SettingsView: View {
                     statusLabel
                 }
                 .font(.callout)
+            }
+
+            Section {
+                Text("My PSX \(Self.appVersion)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
         }
         .formStyle(.grouped)

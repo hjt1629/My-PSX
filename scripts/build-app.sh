@@ -7,6 +7,9 @@ APP_NAME="MyPSX"
 DISPLAY_NAME="My PSX"
 BUNDLE_ID="com.hjt1629.mypsx"
 VERSION="${VERSION:-0.1.0}"
+# 빌드 번호는 커밋 해시 — 설정 창 아래에 표시돼 어떤 빌드인지 알 수 있습니다.
+BUILD="${BUILD:-$(git rev-parse --short HEAD 2>/dev/null || echo "$VERSION")}"
+BUILD="${BUILD:0:7}"
 
 swift build -c release
 BIN_DIR="$(swift build -c release --show-bin-path)"
@@ -27,7 +30,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>${DISPLAY_NAME}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-    <key>CFBundleVersion</key><string>${VERSION}</string>
+    <key>CFBundleVersion</key><string>${BUILD}</string>
     <key>CFBundleDevelopmentRegion</key><string>ko</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.photography</string>
