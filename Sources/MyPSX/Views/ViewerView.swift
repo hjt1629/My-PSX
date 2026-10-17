@@ -4,12 +4,14 @@ import SwiftUI
 /// 뷰어 탭: 왼쪽 폴더 트리 + 가운데 썸네일(또는 크게 보기) + 아래 상태 막대
 struct ViewerView: View {
     @EnvironmentObject private var browser: FolderBrowser
+    /// 왼쪽 패널 너비 (뷰어와 편집 탭이 함께 사용)
+    @AppStorage("leftPaneWidth") private var leftWidth: Double = 280
 
     var body: some View {
         HStack(spacing: 0) {
             FolderTreePane()
-                .frame(width: 280)
-            PanelDivider()
+                .frame(width: leftWidth)
+            ResizeHandle(width: $leftWidth, range: 200...460, defaultWidth: 280)
             VStack(spacing: 0) {
                 PathBar()
                 PanelDivider(vertical: false)

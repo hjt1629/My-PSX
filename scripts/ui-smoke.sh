@@ -106,8 +106,22 @@ keycode 36;                                    shot 22-after-save 3
 keycode 124;                                   shot 23-next-photo 3
 keycode 53;                                    shot 24-back-to-viewer 3
 
-# 좁은 창에서도 도구 막대가 잘리지 않는지 (사진 편집 탭으로)
+# 좌우 패널 너비 끌어서 조절 (사진 편집 탭)
 key "2" "using command down";                  sleep 2
+BOUNDS="$(window_bounds)"
+if command -v cliclick >/dev/null && [ -n "$BOUNDS" ]; then
+    IFS=', ' read -r WX WY WW WH <<< "$BOUNDS"
+    MY=$((WY + WH / 2))
+    LX=$((WX + 280)); RX=$((WX + WW - 271))
+    cliclick "dd:$LX,$MY" "dm:$((LX + 40)),$MY" "dm:$((LX + 80)),$MY" "du:$((LX + 80)),$MY"
+    cliclick "dd:$RX,$MY" "dm:$((RX - 40)),$MY" "dm:$((RX - 80)),$MY" "du:$((RX - 80)),$MY"
+                                                   shot 24b-resized-panes 1
+    # 더블클릭하면 원래 너비로
+    cliclick "dc:$((LX + 80)),$MY" "dc:$((RX - 80)),$MY"
+                                                   shot 24c-panes-reset 1
+fi
+
+# 좁은 창에서도 도구 막대가 잘리지 않는지
 osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID) to set size of front window to {1000, 640}" \
     || echo "⚠️ 창 크기 변경 실패"
 shot 25-narrow-window 2

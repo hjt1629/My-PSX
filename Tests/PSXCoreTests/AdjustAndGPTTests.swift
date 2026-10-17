@@ -46,6 +46,74 @@ final class AdjustmentTests: XCTestCase {
         XCTAssertEqual(small.height, 50)
         XCTAssertTrue(try ImageOps.downscaled(image, maxPixelSize: 1000) === image)
     }
+
+    // MARK: 라이트룸식 조정
+
+    func testTemperatureWarmsAndCools() throws {
+        let image = TestImages.solid(width: 4, height: 4, gray: 0.5)
+        let warm = TestImages.pixel(try ImageOps.adjust(image, ImageAdjustments(temperature: 100)))
+        let cool = TestImages.pixel(try ImageOps.adjust(image, ImageAdjustments(temperature: -100)))
+        XCTAssertGreaterThan(Int(warm.0), Int(warm.2) + 20)
+        XCTAssertGreaterThan(Int(cool.2), Int(cool.0) + 20)
+    }
+
+    func testTintMovesBetweenGreenAndMagenta() throws {
+        let image = TestImages.solid(width: 4, height: 4, gray: 0.5)
+        let magenta = TestImages.pixel(try ImageOps.adjust(image, ImageAdjustments(tint: 100)))
+        let green = TestImages.pixel(try ImageOps.adjust(image, ImageAdjustments(tint: -100)))
+        XCTAssertLessThan(Int(magenta.1), Int(magenta.0) - 10)
+        XCTAssertGreaterThan(Int(green.1), Int(green.0) + 10)
+    }
+
+    func testExposure() throws {
+        let image = TestImages.solid(width: 4, height: 4, gray: 0.4)
+        let up = TestImages.pixel(try ImageOps.adjust(image, ImageAdjustments(exposure: 50))).0
+        let down = TestImages.pixel(try ImageOps.adjust(image, ImageAdjustments(exposure: -50))).0
+        let base = TestImages.pixel(image).0
+        XCTAssertGreaterThan(up, base + 20)
+        XCTAssertLessThan(down, base - 20)
+    }
+
+    func testHighlightsAffectBrightAreasAndShadowsDarkAreas() throws {
+        let bright = TestImages.solid(width: 4, height: 4, gray: 0.8)
+        let dark = TestImages.solid(width: 4, height: 4, gray: 0.2)
+        XCTAssertLessThan(TestImages.pixel(try ImageOps.adjust(bright, ImageAdjustments(highlights: -100))).0,
+                          TestImages.pixel(bright).0 - 8)
+        XCTAssertGreaterThan(TestImages.pixel(try ImageOps.adjust(dark, ImageAdjustments(shadows: 100))).0,
+                             TestImages.pixel(dark).0 + 8)
+    }
+
+    func testWhitesAndBlacks() throws {
+        let black = TestImages.solid(width: 4, height: 4, gray: 0)
+        let white = TestImages.solid(width: 4, height: 4, gray: 1)
+        XCTAssertGreaterThan(TestImages.pixel(try ImageOps.adjust(black, ImageAdjustments(blacks: 100))).0, 15)
+        XCTAssertLessThan(TestImages.pixel(try ImageOps.adjust(white, ImageAdjustments(whites: -100))).0, 240)
+    }
+
+    func testVibranceAddsColor() throws {
+        let image = TestImages.color(width: 4, height: 4, red: 0.6, green: 0.5, blue: 0.45)
+        let more = TestImages.pixel(try ImageOps.adjust(image, ImageAdjustments(vibrance: 100)))
+        let base = TestImages.pixel(image)
+        XCTAssertGreaterThan(Int(more.0) - Int(more.2), Int(base.0) - Int(base.2))
+    }
+
+    func testVignetteDarkensCorners() throws {
+        let image = TestImages.solid(width: 100, height: 100, gray: 0.7)
+        let result = try ImageOps.adjust(image, ImageAdjustments(vignette: -100))
+        let corner = TestImages.pixel(result, x: 1, y: 1).0
+        let center = TestImages.pixel(result).0
+        XCTAssertLessThan(corner, center - 20)
+    }
+
+    func testClarityAndSharpnessKeepSizeAndFlatAreas() throws {
+        let image = TestImages.solid(width: 40, height: 30, gray: 0.5)
+        let result = try ImageOps.adjust(image, ImageAdjustments(clarity: 100, sharpness: 100))
+        XCTAssertEqual(result.width, 40)
+        XCTAssertEqual(result.height, 30)
+        XCTAssertFalse(result.hasAlpha)
+        // 평평한 면은 거의 그대로 (가장자리 테두리가 생기지 않아야 함)
+        XCTAssertLessThan(abs(Int(TestImages.pixel(result, x: 0, y: 0).0) - Int(TestImages.pixel(image).0)), 4)
+    }
 }
 
 final class OpenAIImageClientTests: XCTestCase {
@@ -234,13 +302,18 @@ enum TestImages {
 
     /// 가운데 픽셀의 RGB
     static func pixel(_ image: CGImage) -> (UInt8, UInt8, UInt8) {
+        pixel(image, x: image.width / 2, y: image.height / 2)
+    }
+
+    /// (x, y) 픽셀의 RGB. 원점은 왼쪽 아래.
+    static func pixel(_ image: CGImage, x px: Int, y py: Int) -> (UInt8, UInt8, UInt8) {
         var bytes = [UInt8](repeating: 0, count: 4)
         bytes.withUnsafeMutableBytes { buffer in
             let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
                                     bytesPerRow: 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
             context.interpolationQuality = .none
-            let x = CGFloat(image.width / 2), y = CGFloat(image.height / 2)
+            let x = CGFloat(px), y = CGFloat(py)
             context.draw(image, in: CGRect(x: -x, y: -y, width: CGFloat(image.width), height: CGFloat(image.height)))
         }
         return (bytes[0], bytes[1], bytes[2])

@@ -5,12 +5,14 @@ import SwiftUI
 /// 사진 편집 / 오려내기 탭: 왼쪽 파일 탐색(폴더 트리 + 썸네일) + 가운데 사진 + 오른쪽 도구 패널
 struct EditorWorkspace: View {
     @EnvironmentObject private var browser: FolderBrowser
+    /// 왼쪽 패널 너비 (뷰어와 편집 탭이 함께 사용)
+    @AppStorage("leftPaneWidth") private var leftWidth: Double = 280
 
     var body: some View {
         HStack(spacing: 0) {
             EditorBrowserPane()
-                .frame(width: 280)
-            PanelDivider()
+                .frame(width: leftWidth)
+            ResizeHandle(width: $leftWidth, range: 200...460, defaultWidth: 280)
             if let editor = browser.editor {
                 EditorContent(editor: editor)
                     .id(ObjectIdentifier(editor))
@@ -53,6 +55,7 @@ private struct EditorContent: View {
     @State private var confirmOverwrite = false
     @AppStorage("cutoutTransparent") private var cutoutTransparent = false
     @EnvironmentObject private var gpt: GPTSettings
+    @AppStorage("rightPanelWidth") private var rightWidth: Double = 270
 
     var body: some View {
         HStack(spacing: 0) {
@@ -63,7 +66,7 @@ private struct EditorContent: View {
                 PanelDivider(vertical: false)
                 bottomBar
             }
-            PanelDivider()
+            ResizeHandle(width: $rightWidth, range: 250...420, defaultWidth: 270, trailing: true)
             Group {
                 if browser.tab == .cutout {
                     CutOutPanel(editor: editor, saveAsPNG: { saveAs(forcePNG: true) })
@@ -74,7 +77,7 @@ private struct EditorContent: View {
                     }
                 }
             }
-            .frame(width: 270)
+            .frame(width: rightWidth)
             .background(Theme.panel)
         }
         .background { shortcuts }

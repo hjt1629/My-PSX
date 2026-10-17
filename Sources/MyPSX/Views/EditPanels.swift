@@ -412,34 +412,56 @@ private struct AdjustPanel: View {
     @ObservedObject var editor: PhotoEditor
     @State private var adjustments = ImageAdjustments()
 
+    private static let warmCool = [Color(red: 0.25, green: 0.5, blue: 1), Color(white: 0.75), Color(red: 1, green: 0.8, blue: 0.2)]
+    private static let greenMagenta = [Color(red: 0.2, green: 0.8, blue: 0.3), Color(white: 0.75), Color(red: 0.9, green: 0.3, blue: 0.8)]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PanelHeader(title: "조정")
-            AdjustSlider(title: "밝기", systemImage: "sun.max", value: $adjustments.brightness)
-            AdjustSlider(title: "대비", systemImage: "circle.lefthalf.filled", value: $adjustments.contrast)
-            AdjustSlider(title: "채도", systemImage: "drop.halffull", value: $adjustments.saturation)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    AdjustSection(title: "흰색 균형", key: "wb", isChanged: changed(\.temperature, \.tint),
+                                  onReset: { reset(\.temperature, \.tint) }) {
+                        AdjustSlider(title: "색온도", value: $adjustments.temperature, track: Self.warmCool)
+                        AdjustSlider(title: "색조", value: $adjustments.tint, track: Self.greenMagenta)
+                    }
+                    AdjustSection(title: "톤", key: "tone",
+                                  isChanged: changed(\.exposure, \.brightness, \.contrast, \.highlights,
+                                                     \.shadows, \.whites, \.blacks),
+                                  onReset: { reset(\.exposure, \.brightness, \.contrast, \.highlights,
+                                                   \.shadows, \.whites, \.blacks) }) {
+                        AdjustSlider(title: "노출", value: $adjustments.exposure,
+                                     format: { String(format: "%+.2f", $0 / 50) })
+                        AdjustSlider(title: "밝기", value: $adjustments.brightness)
+                        AdjustSlider(title: "대비", value: $adjustments.contrast)
+                        AdjustSlider(title: "밝은 영역", value: $adjustments.highlights)
+                        AdjustSlider(title: "어두운 영역", value: $adjustments.shadows)
+                        AdjustSlider(title: "흰색 계열", value: $adjustments.whites)
+                        AdjustSlider(title: "검정 계열", value: $adjustments.blacks)
+                    }
+                    AdjustSection(title: "외관", key: "presence",
+                                  isChanged: changed(\.clarity, \.vibrance, \.saturation),
+                                  onReset: { reset(\.clarity, \.vibrance, \.saturation) }) {
+                        AdjustSlider(title: "부분 대비", value: $adjustments.clarity)
+                        AdjustSlider(title: "생동감", value: $adjustments.vibrance)
+                        AdjustSlider(title: "채도", value: $adjustments.saturation)
+                    }
+                    AdjustSection(title: "세부 · 효과", key: "detail",
+                                  isChanged: changed(\.sharpness, \.vignette),
+                                  onReset: { reset(\.sharpness, \.vignette) }) {
+                        AdjustSlider(title: "선명하게", value: $adjustments.sharpness, range: 0...100)
+                        AdjustSlider(title: "비네팅", value: $adjustments.vignette)
+                    }
 
-            Button {
-                adjustments = ImageAdjustments()
-            } label: {
-                Label("모두 0으로", systemImage: "arrow.counterclockwise")
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    Text("슬라이더 이름을 더블클릭하면 0으로 돌아갑니다. 움직이면 바로 미리 보이고, '적용'을 누르면 원본 크기로 반영됩니다.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                }
             }
-            .buttonStyle(DarkButtonStyle())
-            .disabled(adjustments.isIdentity)
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
 
-            Text("슬라이더를 움직이면 바로 미리 보이고, '적용'을 누르면 원본 크기로 반영됩니다.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-
-            Spacer()
+            PanelDivider(vertical: false)
             PanelActions(applyTitle: "적용",
                          applyDisabled: adjustments.isIdentity || editor.isBusy,
                          onCancel: { adjustments = ImageAdjustments() },
@@ -454,30 +476,98 @@ private struct AdjustPanel: View {
         }
         .onDisappear { editor.endAdjustmentPreview() }
     }
+
+    private func changed(_ keys: WritableKeyPath<ImageAdjustments, Double>...) -> Bool {
+        keys.contains { adjustments[keyPath: $0] != 0 }
+    }
+
+    private func reset(_ keys: WritableKeyPath<ImageAdjustments, Double>...) {
+        for key in keys { adjustments[keyPath: key] = 0 }
+    }
+}
+
+/// 라이트룸처럼 접고 펼 수 있는 조정 묶음
+private struct AdjustSection<Content: View>: View {
+    let title: String
+    let isChanged: Bool
+    let onReset: () -> Void
+    let content: Content
+    @AppStorage private var collapsed: Bool
+
+    init(title: String, key: String, isChanged: Bool, onReset: @escaping () -> Void,
+         @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.isChanged = isChanged
+        self.onReset = onReset
+        self.content = content()
+        _collapsed = AppStorage(wrappedValue: false, "adjustCollapsed.\(key)")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .rotationEffect(.degrees(collapsed ? 0 : 90))
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                if isChanged {
+                    Button("초기화", action: onReset)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { collapsed.toggle() } }
+
+            if !collapsed {
+                content
+                    .padding(.bottom, 6)
+            }
+            PanelDivider(vertical: false)
+        }
+    }
 }
 
 private struct AdjustSlider: View {
     let title: String
-    let systemImage: String
     @Binding var value: Double
+    var range: ClosedRange<Double> = -100...100
+    /// 슬라이더 아래 색 막대 (색온도·색조)
+    var track: [Color]? = nil
+    var format: (Double) -> String = { $0 > 0 ? "+\(Int($0))" : "\(Int($0))" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 1) {
             HStack {
-                Label(title, systemImage: systemImage)
-                    .font(.system(size: 12))
+                Text(title)
+                    .font(.system(size: 11))
                     .foregroundStyle(Theme.text)
+                    .onTapGesture(count: 2) { value = 0 }
+                    .help("더블클릭하면 0으로")
                 Spacer()
-                Text(value > 0 ? "+\(Int(value))" : "\(Int(value))")
-                    .font(.system(size: 12, weight: .medium))
+                Text(format(value))
+                    .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(value == 0 ? Theme.secondaryText : Theme.accent)
+                    .onTapGesture(count: 2) { value = 0 }
             }
-            Slider(value: $value, in: -100...100, step: 1)
-                .controlSize(.small)
+            Slider(value: $value, in: range, step: 1)
+                .controlSize(.mini)
+            if let track {
+                LinearGradient(colors: track, startPoint: .leading, endPoint: .trailing)
+                    .frame(height: 3)
+                    .clipShape(Capsule())
+                    .opacity(0.8)
+            }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.vertical, 3)
     }
 }
 

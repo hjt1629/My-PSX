@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// PhotoScape X 느낌의 어두운 회색 테마
@@ -21,6 +22,43 @@ struct PanelDivider: View {
     var body: some View {
         Theme.separator
             .frame(width: vertical ? 1 : nil, height: vertical ? nil : 1)
+    }
+}
+
+/// 끌어서 옆 패널의 너비를 바꾸는 세로 구분선. 더블클릭하면 기본 너비로 돌아갑니다.
+struct ResizeHandle: View {
+    @Binding var width: Double
+    let range: ClosedRange<Double>
+    let defaultWidth: Double
+    /// 오른쪽 패널이면 true (왼쪽으로 끌수록 넓어짐)
+    var trailing = false
+    @State private var startWidth: Double?
+    @State private var hovering = false
+
+    var body: some View {
+        (hovering || startWidth != nil ? Theme.accent.opacity(0.7) : Theme.separator)
+            .frame(width: 1)
+            .overlay {
+                Color.clear
+                    .frame(width: 8)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        hovering = inside
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { drag in
+                                if startWidth == nil { startWidth = width }
+                                let delta = trailing ? -drag.translation.width : drag.translation.width
+                                width = min(max((startWidth ?? width) + delta, range.lowerBound), range.upperBound)
+                            }
+                            .onEnded { _ in startWidth = nil }
+                    )
+                    .onTapGesture(count: 2) { width = defaultWidth }
+                    .help("끌어서 너비 조절 · 더블클릭하면 원래 너비")
+            }
+            .zIndex(1)
     }
 }
 
