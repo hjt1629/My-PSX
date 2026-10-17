@@ -46,26 +46,7 @@ struct FolderTreePane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach(Array(TreeMode.allCases.enumerated()), id: \.element) { index, item in
-                    if index > 0 {
-                        Color.white.opacity(0.15).frame(width: 1, height: 12)
-                    }
-                    Button {
-                        mode = item.rawValue
-                    } label: {
-                        Text(item.title)
-                            .font(.system(size: 12, weight: mode == item.rawValue ? .semibold : .regular))
-                            .foregroundStyle(mode == item.rawValue ? Theme.accent : Theme.secondaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 4)
+            modeTabs
             PanelDivider(vertical: false)
 
             ScrollViewReader { proxy in
@@ -117,6 +98,32 @@ struct FolderTreePane: View {
             }
         }
         .background(Theme.panel)
+    }
+
+    /// 위쪽 "폴더 | 즐겨찾기"
+    private var modeTabs: some View {
+        HStack(spacing: 0) {
+            modeButton(.folders)
+            Color.white.opacity(0.15).frame(width: 1, height: 12)
+            modeButton(.favorites)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func modeButton(_ item: TreeMode) -> some View {
+        let selected = mode == item.rawValue
+        return Button {
+            mode = item.rawValue
+        } label: {
+            Text(item.title)
+                .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Theme.accent : Theme.secondaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func row(_ url: URL, icon: String, iconColor: Color) -> some View {

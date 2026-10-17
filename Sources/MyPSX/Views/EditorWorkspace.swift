@@ -388,13 +388,7 @@ private struct EditorBrowserPane: View {
             }
             PanelDivider(vertical: false)
             HStack(spacing: 2) {
-                if let folder = browser.currentFolder {
-                    paneButton(browser.isFavorite(folder) ? "star.fill" : "star",
-                               help: browser.isFavorite(folder) ? "즐겨찾기에서 제거" : "즐겨찾기에 추가",
-                               tint: browser.isFavorite(folder) ? .yellow : Theme.text) {
-                        browser.toggleFavorite(folder)
-                    }
-                }
+                favoriteButton
                 paneButton("arrow.clockwise", help: "새로고침") { browser.reload() }
                 paneButton("arrow.left", help: "뒤로") { browser.goBack() }
                     .disabled(!browser.canGoBack)
@@ -409,6 +403,18 @@ private struct EditorBrowserPane: View {
             .padding(.vertical, 5)
         }
         .background(Theme.panel)
+    }
+
+    @ViewBuilder
+    private var favoriteButton: some View {
+        if let folder = browser.currentFolder {
+            let isFavorite = browser.isFavorite(folder)
+            paneButton(isFavorite ? "star.fill" : "star",
+                       help: isFavorite ? "즐겨찾기에서 제거" : "즐겨찾기에 추가",
+                       tint: isFavorite ? Color.yellow : Theme.text) {
+                browser.toggleFavorite(folder)
+            }
+        }
     }
 
     private func paneButton(_ systemImage: String, help: String, tint: Color = Theme.text,
@@ -440,26 +446,9 @@ private struct EditorThumbnails: View {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 58), spacing: 6)], spacing: 6) {
                             ForEach(browser.photos, id: \.self) { url in
-                                let isOpen = url == browser.openedPhoto
-                                ThumbnailView(url: url)
-                                    .frame(width: 54, height: 54)
-                                    .padding(3)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 3)
-                                            .fill(isOpen ? Theme.accent.opacity(0.3) : Color.white.opacity(0.04))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 3)
-                                            .stroke(isOpen ? Theme.accent : Color.white.opacity(0.08),
-                                                    lineWidth: isOpen ? 2 : 1)
-                                    )
-                                    .contentShape(Rectangle())
+                                EditorThumbnailCell(url: url, isOpen: url == browser.openedPhoto)
                                     .id(url)
-                                    .help(url.lastPathComponent)
-                                    .onTapGesture {
-                                        guard !isOpen else { return }
-                                        browser.requestNavigation { browser.openPhoto(url, in: browser.tab) }
-                                    }
+                                    .onTapGesture { open(url) }
                             }
                         }
                         .padding(8)
@@ -472,6 +461,11 @@ private struct EditorThumbnails: View {
         .background(Color.black.opacity(0.12))
     }
 
+    private func open(_ url: URL) {
+        guard url != browser.openedPhoto else { return }
+        browser.requestNavigation { browser.openPhoto(url, in: browser.tab) }
+    }
+
     private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
         guard let url = browser.openedPhoto, browser.photos.contains(url) else { return }
         if animated {
@@ -479,6 +473,24 @@ private struct EditorThumbnails: View {
         } else {
             proxy.scrollTo(url, anchor: .center)
         }
+    }
+}
+
+/// 썸네일 한 칸
+private struct EditorThumbnailCell: View {
+    let url: URL
+    let isOpen: Bool
+
+    var body: some View {
+        let fill: Color = isOpen ? Theme.accent.opacity(0.3) : Color.white.opacity(0.04)
+        let stroke: Color = isOpen ? Theme.accent : Color.white.opacity(0.08)
+        return ThumbnailView(url: url)
+            .frame(width: 54, height: 54)
+            .padding(3)
+            .background(RoundedRectangle(cornerRadius: 3).fill(fill))
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(stroke, lineWidth: isOpen ? 2 : 1))
+            .contentShape(Rectangle())
+            .help(url.lastPathComponent)
     }
 }
 

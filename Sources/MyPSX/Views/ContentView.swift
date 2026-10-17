@@ -62,10 +62,9 @@ struct TabBar: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.secondaryText)
                 .padding(.trailing, 10)
-            ForEach(Array(AppTab.allCases.enumerated()), id: \.element) { index, tab in
-                if index > 0 {
-                    Theme.separator.frame(width: 1, height: 14)
-                        .overlay(Color.white.opacity(0.12))
+            ForEach(AppTab.allCases) { tab in
+                if tab != AppTab.allCases.first {
+                    Color.white.opacity(0.15).frame(width: 1, height: 14)
                 }
                 TabItem(tab: tab, selected: browser.tab == tab) {
                     browser.switchTab(tab)
