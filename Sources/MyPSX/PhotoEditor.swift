@@ -150,23 +150,15 @@ final class PhotoEditor: ObservableObject {
 
     /// 글로 쓴 지시대로 AI가 사진을 수정합니다.
     func aiEdit(_ ai: any AIImageEditor, prompt: String) {
-        perform("GPT가 사진을 수정하는 중…") {
+        perform("AI가 사진을 수정하는 중… (\(ai.displayName))") {
             try await ai.edit($0, prompt: prompt, transparentBackground: false)
         }
     }
 
     /// AI로 배경을 정리합니다. 기본은 흰색 배경, transparent면 투명 배경.
-    /// 투명 배경을 직접 못 만드는 모델(gpt-image-2 API)만 흰 배경으로 정리한 뒤 macOS 기능으로 지웁니다.
     func aiRemoveBackground(_ ai: any AIImageEditor, transparent: Bool) {
-        perform("GPT가 배경을 정리하는 중…") { image in
-            if transparent && ai.supportsTransparentBackground {
-                return try await ai.edit(image, prompt: AIPrompts.transparentBackground, transparentBackground: true)
-            }
-            let white = try await ai.edit(image, prompt: AIPrompts.whiteBackground, transparentBackground: false)
-            guard transparent else {
-                return try white.hasAlpha ? ImageOps.flatten(white) : white
-            }
-            return try ImageOps.removeBackground(white)
+        perform("배경을 정리하는 중… (\(ai.displayName))") { image in
+            try await ai.removeBackground(image, transparent: transparent)
         }
     }
 

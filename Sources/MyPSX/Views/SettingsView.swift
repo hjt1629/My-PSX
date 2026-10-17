@@ -1,7 +1,7 @@
 import PSXCore
 import SwiftUI
 
-/// 설정 창 (⌘,): GPT 연결 방식 (ChatGPT 구독의 Codex CLI / OpenAI API 키)
+/// 설정 창 (⌘,): AI 연결 방식 (ChatGPT 구독의 Codex CLI / OpenAI API 키 / Higgsfield 구독의 CLI)
 struct SettingsView: View {
     @EnvironmentObject private var settings: GPTSettings
     @State private var keyInput = ""
@@ -31,17 +31,17 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.radioGroup)
                 .onChange(of: settings.provider) { _, _ in status = nil }
-                Text("GPT로 사진을 수정하거나 배경을 정리할 때 쓸 연결 방식입니다. 수정할 사진은 OpenAI로 전송됩니다.")
+                Text("AI로 사진을 수정하거나 배경을 정리할 때 쓸 연결 방식입니다. 수정할 사진은 고른 서비스(OpenAI 또는 Higgsfield)로 전송됩니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("GPT 연결")
+                Text("AI 연결")
             }
 
-            if settings.provider == .codex {
-                codexSection
-            } else {
-                apiKeySection
+            switch settings.provider {
+            case .codex: codexSection
+            case .apiKey: apiKeySection
+            case .higgsfield: higgsfieldSection
             }
 
             Section {
@@ -83,6 +83,27 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         } header: {
             Text("ChatGPT 구독 (Codex CLI)")
+        }
+    }
+
+    // MARK: Higgsfield
+
+    private var higgsfieldSection: some View {
+        Section {
+            Text("Higgsfield 구독으로 로그인한 Higgsfield CLI를 씁니다. API 키 없이 구독 크레딧을 씁니다. 배경 제거는 전용 모델(1장 ≈ 1크레딧)이라 빠르고 상품이 원본 그대로이며, 글로 하는 수정은 GPT Image 2.5를 씁니다.")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("처음 한 번만 터미널에서:").font(.caption.weight(.semibold))
+                Text("1.  brew install higgsfield-ai/tap/higgsfield     (또는 npm install -g @higgsfield/cli)")
+                Text("2.  higgsfield auth login     → Higgsfield 계정으로 로그인")
+            }
+            .font(.system(.caption, design: .monospaced))
+            .textSelection(.enabled)
+            Text("Higgsfield 웹의 '무제한' 혜택은 CLI에는 적용되지 않아, 쓸 때마다 크레딧이 차감됩니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } header: {
+            Text("Higgsfield 구독 (CLI)")
         }
     }
 
@@ -187,6 +208,9 @@ struct SettingsView: View {
                     guard let client else { throw GPTError.missingKey }
                     try await client.checkConnection()
                     status = .success("연결되었습니다 (\(client.model))")
+                case .higgsfield:
+                    let text = try await HiggsfieldClient().accountStatus()
+                    status = .success(text)
                 }
             } catch {
                 status = .failure(error.localizedDescription)

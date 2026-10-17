@@ -770,6 +770,8 @@ private struct AIEditPanel: View {
             return "연결: ChatGPT 구독 (Codex CLI) · 구독의 Codex 사용량을 씁니다. 사진이 OpenAI로 전송됩니다. 결과는 '되돌리기'로 취소할 수 있습니다."
         case .apiKey:
             return "연결: OpenAI API (\(gpt.model)) · 사용량만큼 요금이 나가고 사진이 OpenAI로 전송됩니다. 결과는 '되돌리기'로 취소할 수 있습니다."
+        case .higgsfield:
+            return "연결: Higgsfield 구독 (CLI, GPT Image 2.5) · 구독 크레딧을 씁니다. 사진이 Higgsfield로 전송됩니다. 결과는 '되돌리기'로 취소할 수 있습니다."
         }
     }
 }
@@ -819,7 +821,7 @@ struct CutOutPanel: View {
                     VStack(spacing: 2) {
                         Label("빠른 배경 제거", systemImage: "bolt.fill")
                             .font(.system(size: 13, weight: .semibold))
-                        Text("GPT가 상품만 남기고 나머지를 정리합니다")
+                        Text(gpt.provider == .higgsfield ? "Higgsfield 배경 제거 모델" : "GPT가 상품만 남기고 나머지를 정리합니다")
                             .font(.system(size: 10))
                             .opacity(0.8)
                     }
@@ -918,12 +920,14 @@ struct CutOutPanel: View {
     }
 
     private var gptNote: String {
-        if !gpt.isReady { return "설정(⌘,)에서 GPT 연결 방식을 고르면 쓸 수 있습니다." }
+        if !gpt.isReady { return "설정(⌘,)에서 AI 연결 방식을 고르면 쓸 수 있습니다." }
         switch gpt.provider {
         case .codex:
             return "ChatGPT 구독(Codex CLI) · 이미지 도구를 바로 한 번만 부르도록 최소 설정으로 실행합니다. 걸린 시간은 아래 막대에 표시됩니다."
         case .apiKey:
             return "OpenAI API(\(gpt.model)) · 사용량만큼 요금이 나갑니다. 걸린 시간은 아래 막대에 표시됩니다."
+        case .higgsfield:
+            return "Higgsfield 구독(CLI) · 배경 제거 전용 모델이라 상품은 원본 그대로입니다. 1장에 약 1크레딧. 걸린 시간은 아래 막대에 표시됩니다."
         }
     }
 

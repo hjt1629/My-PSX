@@ -8,6 +8,8 @@ enum AIProvider: String, CaseIterable, Identifiable {
     case codex
     /// OpenAI API 키 (사용량만큼 별도 과금)
     case apiKey
+    /// Higgsfield 구독 (맥에 설치된 Higgsfield CLI에 로그인, 구독 크레딧 사용)
+    case higgsfield
 
     var id: Self { self }
 
@@ -15,6 +17,7 @@ enum AIProvider: String, CaseIterable, Identifiable {
         switch self {
         case .codex: return "ChatGPT 구독 (Codex CLI) — 실험 기능"
         case .apiKey: return "OpenAI API 키"
+        case .higgsfield: return "Higgsfield 구독 (CLI)"
         }
     }
 }
@@ -61,9 +64,9 @@ final class GPTSettings: ObservableObject {
         hasAPIKey = !(apiKey ?? "").isEmpty
     }
 
-    /// 지금 고른 방식으로 쓸 수 있는지 (Codex는 실행해 봐야 알 수 있어 항상 true)
+    /// 지금 고른 방식으로 쓸 수 있는지 (CLI 방식은 실행해 봐야 알 수 있어 항상 true)
     var isReady: Bool {
-        provider == .codex || hasAPIKey
+        provider != .apiKey || hasAPIKey
     }
 
     /// 지금 고른 방식의 AI 편집기
@@ -71,6 +74,7 @@ final class GPTSettings: ObservableObject {
         switch provider {
         case .codex: return CodexImageClient()
         case .apiKey: return makeClient()
+        case .higgsfield: return HiggsfieldClient()
         }
     }
 

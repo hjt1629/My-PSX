@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// 글로 사진을 수정해 주는 AI (OpenAI API 키 방식 / ChatGPT 구독의 Codex CLI 방식)
+/// 글로 사진을 수정해 주는 AI (OpenAI API 키 / ChatGPT 구독의 Codex CLI / Higgsfield 구독의 CLI)
 public protocol AIImageEditor: Sendable {
     /// 화면에 보여줄 이름
     var displayName: String { get }
@@ -9,6 +9,22 @@ public protocol AIImageEditor: Sendable {
     var supportsTransparentBackground: Bool { get }
     /// - Parameter transparentBackground: true면 투명 배경 PNG를 요청합니다. (지원할 때만)
     func edit(_ image: CGImage, prompt: String, transparentBackground: Bool) async throws -> CGImage
+    /// 상품만 남기고 배경을 흰색(transparent면 투명)으로. 기본 구현은 edit에 배경 정리 지시문을 줍니다.
+    func removeBackground(_ image: CGImage, transparent: Bool) async throws -> CGImage
+}
+
+extension AIImageEditor {
+    public func removeBackground(_ image: CGImage, transparent: Bool) async throws -> CGImage {
+        if transparent && supportsTransparentBackground {
+            return try await edit(image, prompt: AIPrompts.transparentBackground, transparentBackground: true)
+        }
+        let white = try await edit(image, prompt: AIPrompts.whiteBackground, transparentBackground: false)
+        guard transparent else {
+            return try white.hasAlpha ? ImageOps.flatten(white) : white
+        }
+        // 투명 배경을 직접 못 만드는 모델(gpt-image-2 API)만 흰 배경으로 정리한 뒤 macOS 기능으로 지웁니다.
+        return try ImageOps.removeBackground(white)
+    }
 }
 
 public enum AIPrompts {
