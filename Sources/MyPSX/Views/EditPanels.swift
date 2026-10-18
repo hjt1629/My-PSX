@@ -35,7 +35,9 @@ struct EditPanel: View {
     @State private var panelTab: EditPanelTab = .tools
 
     var body: some View {
-        if editor.mode == .crop {
+        if editor.mode == .place {
+            PlacePanel(editor: editor)
+        } else if editor.mode == .crop {
             CropPanel(editor: editor, cropAspect: $cropAspect)
         } else if tool == .resize, let image = editor.image {
             ResizePanel(originalSize: image.pixelSize) { width, height in
@@ -90,8 +92,7 @@ struct EditPanel: View {
                         tool = .resize
                     }
                     ToolRow(title: "자르기", systemImage: "crop", help: "자르기 (⌘K)") {
-                        guard let image = editor.image else { return }
-                        editor.beginCrop(aspect: cropAspect.ratio(for: image.pixelSize))
+                        editor.beginCrop()
                     }
                     ToolRow(title: "오려내기", systemImage: "scissors", help: "배경 제거 (⇧⌘B)") {
                         onRemoveBackground()
@@ -229,6 +230,8 @@ private struct CropPanel: View {
     @ObservedObject var editor: PhotoEditor
     @Binding var cropAspect: CropAspect
     @State private var copied = false
+    @AppStorage("placeCanvasSize") private var placeSize = 1000
+    @AppStorage("shopFitMargin") private var margin = 0.1
 
     /// 선택 영역을 새 파일로 저장. 기본 위치는 사진이 있는 폴더입니다.
     private func saveSelection() {
@@ -292,8 +295,10 @@ private struct CropPanel: View {
             .padding(.horizontal, 12)
 
             PanelHeader(title: "선택 영역")
-            Text("\(Int(editor.cropRect.width.rounded())) × \(Int(editor.cropRect.height.rounded())) px")
-                .font(.system(size: 15, weight: .medium))
+            Text(editor.hasCropSelection
+                 ? "\(Int(editor.cropRect.width.rounded())) × \(Int(editor.cropRect.height.rounded())) px"
+                 : "사진 위를 드래그해서 고르세요")
+                .font(.system(size: editor.hasCropSelection ? 15 : 12, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
                 .padding(.horizontal, 14)
@@ -323,6 +328,19 @@ private struct CropPanel: View {
                 }
                 .buttonStyle(DarkButtonStyle())
                 .keyboardShortcut("b", modifiers: .command)
+
+                Button {
+                    editor.beginPlace(canvasSize: placeSize, margin: margin)
+                } label: {
+                    Label("흰 배경 \(placeSize)×\(placeSize)에 놓기 (⌘J)", systemImage: "square.on.square.dashed")
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+                }
+                .buttonStyle(DarkButtonStyle())
+                .keyboardShortcut("j", modifiers: .command)
+                .help("선택 영역만 흰 정사각형 배경 가운데에 놓습니다. 다음 화면에서 끌어서 위치와 크기를 고릅니다.")
             }
             .disabled(editor.cropRect.width < 1 || editor.cropRect.height < 1)
             .padding(.horizontal, 12)
@@ -333,6 +351,89 @@ private struct CropPanel: View {
                          onCancel: { editor.cancelCrop() },
                          onApply: { editor.applyCrop() })
         }
+    }
+}
+
+// MARK: - 흰 배경에 놓기
+
+private struct PlacePanel: View {
+    @ObservedObject var editor: PhotoEditor
+    @AppStorage("placeCanvasSize") private var placeSize = 1000
+    @AppStorage("shopFitMargin") private var margin = 0.1
+
+    private let sizes = [800, 1000, 1200, 1500, 2000]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PanelHeader(title: "흰 배경에 놓기")
+            Text("이미지 안쪽을 끌면 위치가, 모서리를 끌면 크기가 바뀝니다. 가운데나 배경 끝에 가까우면 딱 붙고, 끝에 맞은 변은 초록 선으로 표시됩니다. 배경 밖으로 나간 부분은 잘립니다.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
+
+            PanelHeader(title: "배경 크기")
+            Picker("배경 크기", selection: $placeSize) {
+                ForEach(sizes, id: \.self) { Text("\($0) × \($0) px").tag($0) }
+            }
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.bottom, 10)
+            .onChange(of: placeSize) { _, size in editor.setPlaceCanvas(size: size) }
+
+            PanelHeader(title: "이미지 크기")
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("\(Int(editor.placeRect.width.rounded())) × \(Int(editor.placeRect.height.rounded())) px")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.text)
+                    Spacer()
+                    Text("\(Int((editor.placementScale * 100).rounded()))%")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                }
+                .monospacedDigit()
+                Slider(value: Binding(get: { Double(editor.placementScale) },
+                                      set: { editor.setPlacementScale(CGFloat(($0 * 100).rounded() / 100)) }),
+                       in: 0.1...1.5)
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 6)
+
+            let edges = PlaceOverlay.touchingEdges(of: editor.placeRect, canvas: editor.placeCanvas)
+            Label(edges.isEmpty ? "배경 끝에 닿은 변 없음" : "배경 끝에 딱 맞음: " + edges.map(\.title).joined(separator: " · "),
+                  systemImage: edges.isEmpty ? "square.dashed" : "checkmark.square.fill")
+                .font(.system(size: 11, weight: edges.isEmpty ? .regular : .semibold))
+                .foregroundStyle(edges.isEmpty ? Theme.secondaryText : Color.green)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
+
+            VStack(spacing: 6) {
+                placeButton("가운데로", systemImage: "align.horizontal.center") { editor.centerPlacement() }
+                placeButton("여백 \(Int((margin * 100).rounded()))% 두고 꽉 차게", systemImage: "arrow.up.left.and.arrow.down.right") {
+                    editor.fitPlacement(margin: margin)
+                }
+            }
+            .padding(.horizontal, 12)
+
+            Spacer()
+            PanelActions(applyTitle: "적용",
+                         onCancel: { editor.cancelPlace() },
+                         onApply: { editor.applyPlace() })
+        }
+    }
+
+    private func placeButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 12))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+        }
+        .buttonStyle(DarkButtonStyle())
     }
 }
 

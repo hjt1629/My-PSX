@@ -238,9 +238,12 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(editor.image?.height, 40)
         XCTAssertTrue(editor.isModified)
 
-        // 자르기 (1:1)
-        editor.beginCrop(aspect: 1)
+        // 자르기는 선택 영역 없이 시작 (드래그해서 고름)
+        editor.beginCrop()
         XCTAssertEqual(editor.mode, .crop)
+        XCTAssertFalse(editor.hasCropSelection)
+        // 비율 1:1 버튼을 누르면 가운데에 가장 큰 영역
+        editor.resetCropRect(aspect: 1)
         XCTAssertEqual(editor.cropRect, CGRect(x: 0, y: 10, width: 20, height: 20))
         editor.applyCrop()
         try await waitForIdle(editor)
@@ -249,7 +252,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(editor.image?.height, 20)
 
         // 자르기 취소는 이미지를 바꾸지 않습니다.
-        editor.beginCrop(aspect: nil)
+        editor.beginCrop()
         editor.cancelCrop()
         XCTAssertEqual(editor.image?.width, 20)
 
@@ -315,7 +318,7 @@ final class AppFlowTests: XCTestCase {
         let editor = PhotoEditor(url: folder.appendingPathComponent("photo10.jpg"))
         await editor.load()
         let original = try XCTUnwrap(editor.image)
-        editor.beginCrop(aspect: nil)
+        editor.beginCrop()
         editor.cropRect = CGRect(x: 5, y: 2, width: 12, height: 8)
 
         let url = folder.appendingPathComponent("photo10_선택.png")
@@ -332,6 +335,56 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(editor.image === original)
         XCTAssertEqual(editor.mode, .crop)
         XCTAssertFalse(editor.isModified)
+    }
+
+    @MainActor
+    func testPlaceSelectionOnWhiteSquare() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo10.jpg"))
+        await editor.load()
+        editor.beginCrop()
+        editor.cropRect = CGRect(x: 0, y: 0, width: 20, height: 10)
+
+        editor.beginPlace(canvasSize: 100, margin: 0.1)
+        XCTAssertEqual(editor.mode, .place)
+        XCTAssertEqual(editor.placeCanvas, CGSize(width: 100, height: 100))
+        // 긴 변이 80px(여백 10%)이 되도록 커지고 가운데에
+        XCTAssertEqual(editor.placeRect, CGRect(x: 10, y: 30, width: 80, height: 40))
+        XCTAssertEqual(editor.placementScale, 0.8, accuracy: 0.001)
+
+        // 크기를 줄여도 가운데는 그대로
+        editor.setPlacementScale(0.4)
+        XCTAssertEqual(editor.placeRect, CGRect(x: 30, y: 40, width: 40, height: 20))
+
+        // 취소하면 자르기로 돌아가고 사진은 그대로
+        editor.cancelPlace()
+        XCTAssertEqual(editor.mode, .crop)
+        XCTAssertEqual(editor.image?.width, 40)
+
+        // 배경을 200으로 바꾸면 이미지도 같은 비율로 따라감
+        editor.beginPlace(canvasSize: 100, margin: 0)
+        editor.setPlaceCanvas(size: 200)
+        XCTAssertEqual(editor.placeRect, CGRect(x: 0, y: 50, width: 200, height: 100))
+
+        // 꽉 차게 놓으면 좌우 끝에 딱 맞음
+        XCTAssertEqual(PlaceOverlay.touchingEdges(of: editor.placeRect, canvas: editor.placeCanvas), [.left, .right])
+        editor.placeRect.origin.y = 0
+        XCTAssertEqual(PlaceOverlay.touchingEdges(of: editor.placeRect, canvas: editor.placeCanvas), [.left, .right, .top])
+        XCTAssertEqual(PlaceOverlay.touchingEdges(of: CGRect(x: 1, y: 1, width: 10, height: 10),
+                                                  canvas: editor.placeCanvas), [])
+        editor.applyPlace()
+        try await waitForIdle(editor)
+        let result = try XCTUnwrap(editor.image)
+        XCTAssertEqual(editor.mode, .view)
+        XCTAssertEqual(result.width, 200)
+        XCTAssertEqual(result.height, 200)
+        XCTAssertFalse(result.hasAlpha)
+        // 파란 이미지는 위쪽 절반에만, 아래쪽은 흰 배경 (JPG 테두리 오차 1px 허용)
+        let bounds = try XCTUnwrap(ImageOps.contentBounds(result))
+        XCTAssertEqual(bounds.minY, 0, accuracy: 1)
+        XCTAssertEqual(bounds.maxY, 100, accuracy: 2)
+        XCTAssertTrue(editor.canUndo)
+        editor.undo()
+        XCTAssertEqual(editor.image?.width, 40)
     }
 
     @MainActor

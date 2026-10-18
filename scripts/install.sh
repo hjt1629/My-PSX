@@ -39,7 +39,7 @@ if pgrep -x MyPSX >/dev/null; then
     pkill -x MyPSX || true
 fi
 rm -rf "$APP"
-ditto build/MyPSX.app "$APP"
+ditto --norsrc --noextattr build/MyPSX.app "$APP"
 
 # 앱의 「업데이트…」 메뉴가 이 폴더를 찾을 수 있도록 기억해 둡니다.
 defaults write "$BUNDLE_ID" sourcePath "$(pwd)"

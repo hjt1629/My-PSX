@@ -14,8 +14,12 @@ BUILD="${BUILD:0:7}"
 swift build -c release
 BIN_DIR="$(swift build -c release --show-bin-path)"
 
-APP="build/${APP_NAME}.app"
-rm -rf "$APP"
+# 문서·데스크탑 폴더(iCloud 동기화)에서는 macOS가 파일에 Finder 정보 같은 확장 속성을 붙여
+# 서명이 "resource fork, Finder information, or similar detritus not allowed"로 실패합니다.
+# 그래서 앱은 임시 폴더에서 만들고 서명한 뒤 build/ 로 옮깁니다.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+APP="$WORK/${APP_NAME}.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 
@@ -57,6 +61,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 # 로컬 실행용 임시 서명 (Apple 개발자 계정 불필요)
+xattr -cr "$APP"
 codesign --force --sign - "$APP"
 
-echo "완료: $APP"
+OUT="build/${APP_NAME}.app"
+mkdir -p build
+rm -rf "$OUT"
+ditto --norsrc --noextattr "$APP" "$OUT"
+
+echo "완료: $OUT"

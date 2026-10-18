@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// 사진 위에 자르기 영역을 그리고 드래그로 조절하게 해줍니다.
+/// 처음에는 영역 없이 시작합니다 (사진 전체가 어둡게 보이고, 드래그하면 영역이 생김).
 /// - 영역 밖에서 드래그: 새 영역 그리기
 /// - 영역 안에서 드래그: 영역 이동
 /// - 모서리 손잡이 드래그: 크기 조절
@@ -58,6 +59,18 @@ struct CropOverlay: View {
             }
             .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
 
+            if hasSelection {
+                selectionFrame(viewRect)
+            }
+        }
+        .contentShape(Rectangle())
+        .gesture(dragGesture)
+    }
+
+    private var hasSelection: Bool { rect.width >= 1 && rect.height >= 1 }
+
+    private func selectionFrame(_ viewRect: CGRect) -> some View {
+        ZStack {
             // 3분할 안내선
             Path { path in
                 for i in 1...2 {
@@ -82,8 +95,6 @@ struct CropOverlay: View {
                     .position(corner.point(in: viewRect))
             }
         }
-        .contentShape(Rectangle())
-        .gesture(dragGesture)
     }
 
     private var dragGesture: some Gesture {
@@ -93,7 +104,9 @@ struct CropOverlay: View {
                     startRect = rect
                     let viewRect = toView(rect)
                     let start = value.startLocation
-                    if let corner = Corner.allCases.first(where: {
+                    if !hasSelection {
+                        dragMode = .create
+                    } else if let corner = Corner.allCases.first(where: {
                         distance($0.point(in: viewRect), start) < 14
                     }) {
                         dragMode = .corner(corner)

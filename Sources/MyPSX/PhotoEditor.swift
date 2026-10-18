@@ -10,6 +10,8 @@ final class PhotoEditor: ObservableObject {
     enum Mode {
         case view
         case crop
+        /// 자르기 선택 영역을 흰 정사각형 배경 위에 놓고 위치·크기를 고르는 중
+        case place
     }
 
     let sourceURL: URL
@@ -28,6 +30,12 @@ final class PhotoEditor: ObservableObject {
     @Published private(set) var isAdjusting = false
     /// 자르기 영역 (픽셀 단위, 왼쪽 위 원점)
     @Published var cropRect: CGRect = .zero
+    /// 흰 배경에 놓을 이미지 (자르기 선택 영역)
+    @Published private(set) var placeLayer: CGImage?
+    /// 흰 배경 캔버스 크기 (픽셀)
+    @Published private(set) var placeCanvas: CGSize = .zero
+    /// 캔버스 위 이미지 위치 (픽셀, 왼쪽 위 원점). 캔버스 밖으로 나간 부분은 잘립니다.
+    @Published var placeRect: CGRect = .zero
 
     @Published private var undoStack: [CGImage] = []
     @Published private var redoStack: [CGImage] = []
@@ -189,11 +197,14 @@ final class PhotoEditor: ObservableObject {
 
     // MARK: 자르기
 
-    func beginCrop(aspect: CGFloat?) {
+    /// 자르기를 시작합니다. 선택 영역 없이 시작해 사진 위를 드래그해서 고릅니다.
+    func beginCrop() {
         guard canEdit else { return }
-        resetCropRect(aspect: aspect)
+        cropRect = .zero
         mode = .crop
     }
+
+    var hasCropSelection: Bool { cropRect.width >= 1 && cropRect.height >= 1 }
 
     /// 주어진 비율로 가능한 가장 큰 영역을 가운데에 잡습니다.
     func resetCropRect(aspect: CGFloat?) {
@@ -222,6 +233,76 @@ final class PhotoEditor: ObservableObject {
 
     func cancelCrop() {
         mode = .view
+    }
+
+    // MARK: 흰 배경에 놓기
+
+    /// 자르기 선택 영역을 size×size 흰 배경 가운데에 여백(margin)을 두고 놓습니다. 이후 끌어서 위치·크기를 고릅니다.
+    func beginPlace(canvasSize size: Int, margin: Double) {
+        guard mode == .crop, !isBusy, let layer = try? selectionImage() else { return }
+        placeLayer = layer
+        placeCanvas = CGSize(width: max(16, size), height: max(16, size))
+        fitPlacement(margin: margin)
+        mode = .place
+    }
+
+    /// 여백을 두고 캔버스에 꽉 차게, 가운데에 놓습니다.
+    func fitPlacement(margin: Double) {
+        guard let layer = placeLayer else { return }
+        let available = min(placeCanvas.width, placeCanvas.height) * (1 - 2 * min(max(margin, 0), 0.4))
+        let scale = available / CGFloat(max(layer.width, layer.height))
+        let size = CGSize(width: CGFloat(layer.width) * scale, height: CGFloat(layer.height) * scale)
+        placeRect = CGRect(origin: .zero, size: size)
+        centerPlacement()
+    }
+
+    func centerPlacement() {
+        placeRect.origin = CGPoint(x: (placeCanvas.width - placeRect.width) / 2,
+                                   y: (placeCanvas.height - placeRect.height) / 2)
+    }
+
+    /// 이미지의 긴 변이 캔버스에서 차지하는 비율 (1 = 꽉 참)
+    var placementScale: CGFloat {
+        let side = min(placeCanvas.width, placeCanvas.height)
+        return side > 0 ? max(placeRect.width, placeRect.height) / side : 1
+    }
+
+    /// 가운데를 그대로 두고 크기만 바꿉니다.
+    func setPlacementScale(_ scale: CGFloat) {
+        guard let layer = placeLayer else { return }
+        let long = min(placeCanvas.width, placeCanvas.height) * max(scale, 0.02)
+        let ratio = long / CGFloat(max(layer.width, layer.height))
+        let center = CGPoint(x: placeRect.midX, y: placeRect.midY)
+        let size = CGSize(width: CGFloat(layer.width) * ratio, height: CGFloat(layer.height) * ratio)
+        placeRect = CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2,
+                           width: size.width, height: size.height)
+    }
+
+    /// 캔버스 크기를 바꿉니다. 이미지는 같은 비율·위치로 따라갑니다.
+    func setPlaceCanvas(size: Int) {
+        let new = CGFloat(max(16, size))
+        guard placeCanvas.width > 0 else { return }
+        let factor = new / placeCanvas.width
+        placeCanvas = CGSize(width: new, height: new)
+        placeRect = CGRect(x: placeRect.minX * factor, y: placeRect.minY * factor,
+                           width: placeRect.width * factor, height: placeRect.height * factor)
+    }
+
+    /// 지금 위치·크기로 흰 배경 사진을 만듭니다. (실행 취소 가능)
+    func applyPlace() {
+        guard mode == .place, let layer = placeLayer else { return }
+        let canvas = placeCanvas, rect = placeRect
+        mode = .view
+        placeLayer = nil
+        perform("흰 배경에 놓는 중…") { _ in
+            try ImageOps.place(layer, canvasWidth: Int(canvas.width), height: Int(canvas.height), at: rect)
+        }
+    }
+
+    /// 자르기 화면으로 돌아갑니다. (선택 영역은 그대로)
+    func cancelPlace() {
+        placeLayer = nil
+        mode = .crop
     }
 
     /// 자르기 선택 영역만 잘라 낸 이미지. 편집 중인 사진은 그대로 둡니다.
