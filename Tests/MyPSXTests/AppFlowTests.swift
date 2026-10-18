@@ -238,9 +238,12 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(editor.image?.height, 40)
         XCTAssertTrue(editor.isModified)
 
-        // 자르기 (1:1)
-        editor.beginCrop(aspect: 1)
+        // 자르기는 선택 영역 없이 시작 (드래그해서 고름)
+        editor.beginCrop()
         XCTAssertEqual(editor.mode, .crop)
+        XCTAssertFalse(editor.hasCropSelection)
+        // 비율 1:1 버튼을 누르면 가운데에 가장 큰 영역
+        editor.resetCropRect(aspect: 1)
         XCTAssertEqual(editor.cropRect, CGRect(x: 0, y: 10, width: 20, height: 20))
         editor.applyCrop()
         try await waitForIdle(editor)
@@ -249,7 +252,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(editor.image?.height, 20)
 
         // 자르기 취소는 이미지를 바꾸지 않습니다.
-        editor.beginCrop(aspect: nil)
+        editor.beginCrop()
         editor.cancelCrop()
         XCTAssertEqual(editor.image?.width, 20)
 
@@ -315,7 +318,7 @@ final class AppFlowTests: XCTestCase {
         let editor = PhotoEditor(url: folder.appendingPathComponent("photo10.jpg"))
         await editor.load()
         let original = try XCTUnwrap(editor.image)
-        editor.beginCrop(aspect: nil)
+        editor.beginCrop()
         editor.cropRect = CGRect(x: 5, y: 2, width: 12, height: 8)
 
         let url = folder.appendingPathComponent("photo10_선택.png")
@@ -338,7 +341,7 @@ final class AppFlowTests: XCTestCase {
     func testPlaceSelectionOnWhiteSquare() async throws {
         let editor = PhotoEditor(url: folder.appendingPathComponent("photo10.jpg"))
         await editor.load()
-        editor.beginCrop(aspect: nil)
+        editor.beginCrop()
         editor.cropRect = CGRect(x: 0, y: 0, width: 20, height: 10)
 
         editor.beginPlace(canvasSize: 100, margin: 0.1)

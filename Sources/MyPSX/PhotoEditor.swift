@@ -197,11 +197,14 @@ final class PhotoEditor: ObservableObject {
 
     // MARK: 자르기
 
-    func beginCrop(aspect: CGFloat?) {
+    /// 자르기를 시작합니다. 선택 영역 없이 시작해 사진 위를 드래그해서 고릅니다.
+    func beginCrop() {
         guard canEdit else { return }
-        resetCropRect(aspect: aspect)
+        cropRect = .zero
         mode = .crop
     }
+
+    var hasCropSelection: Bool { cropRect.width >= 1 && cropRect.height >= 1 }
 
     /// 주어진 비율로 가능한 가장 큰 영역을 가운데에 잡습니다.
     func resetCropRect(aspect: CGFloat?) {

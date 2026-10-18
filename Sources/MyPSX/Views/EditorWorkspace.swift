@@ -325,9 +325,9 @@ private struct EditorContent: View {
     }
 
     private func beginCrop() {
-        guard let image = editor.image else { return }
+        guard editor.image != nil else { return }
         browser.tab = .editor
-        editor.beginCrop(aspect: cropAspect.ratio(for: image.pixelSize))
+        editor.beginCrop()
     }
 
     // MARK: 저장

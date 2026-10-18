@@ -92,8 +92,7 @@ struct EditPanel: View {
                         tool = .resize
                     }
                     ToolRow(title: "자르기", systemImage: "crop", help: "자르기 (⌘K)") {
-                        guard let image = editor.image else { return }
-                        editor.beginCrop(aspect: cropAspect.ratio(for: image.pixelSize))
+                        editor.beginCrop()
                     }
                     ToolRow(title: "오려내기", systemImage: "scissors", help: "배경 제거 (⇧⌘B)") {
                         onRemoveBackground()
@@ -296,8 +295,10 @@ private struct CropPanel: View {
             .padding(.horizontal, 12)
 
             PanelHeader(title: "선택 영역")
-            Text("\(Int(editor.cropRect.width.rounded())) × \(Int(editor.cropRect.height.rounded())) px")
-                .font(.system(size: 15, weight: .medium))
+            Text(editor.hasCropSelection
+                 ? "\(Int(editor.cropRect.width.rounded())) × \(Int(editor.cropRect.height.rounded())) px"
+                 : "사진 위를 드래그해서 고르세요")
+                .font(.system(size: editor.hasCropSelection ? 15 : 12, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
                 .padding(.horizontal, 14)
