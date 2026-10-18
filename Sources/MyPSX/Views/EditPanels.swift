@@ -639,7 +639,7 @@ private struct AdjustSlider: View {
 private struct AIEditPanel: View {
     @EnvironmentObject private var gpt: GPTSettings
     @EnvironmentObject private var jobs: BackgroundJobs
-    private var cutout = CutoutSettings()
+    var cutout = CutoutSettings()
     @ObservedObject var editor: PhotoEditor
     @State private var prompt = ""
     @AppStorage("cutoutTransparent") private var transparent = false
@@ -863,7 +863,7 @@ private struct ShopFitOptions: View {
 struct CutOutPanel: View {
     @EnvironmentObject private var gpt: GPTSettings
     @EnvironmentObject private var jobs: BackgroundJobs
-    private var cutout = CutoutSettings()
+    var cutout = CutoutSettings()
     @ObservedObject var editor: PhotoEditor
     let saveAsPNG: () -> Void
 

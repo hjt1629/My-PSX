@@ -55,7 +55,7 @@ private struct EditorContent: View {
     @State private var confirmOverwrite = false
     @AppStorage("cutoutTransparent") private var cutoutTransparent = false
     @AppStorage("cutoutLargestOnly") private var cutoutLargestOnly = true
-    private var cutout = CutoutSettings()
+    var cutout = CutoutSettings()
     @EnvironmentObject private var gpt: GPTSettings
     @EnvironmentObject private var jobs: BackgroundJobs
     @AppStorage("rightPanelWidth") private var rightWidth: Double = 270
