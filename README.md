@@ -71,7 +71,7 @@ Swift + SwiftUI로 만든 네이티브 앱이라 빠르고 가볍습니다.
 
 ```bash
 xcode-select --install   # Command Line Tools (이미 있으면 건너뜀)
-git clone -b claude/photo-viewer-editor https://github.com/hjt1629/My-PSX.git ~/My-PSX
+git clone https://github.com/hjt1629/My-PSX.git ~/My-PSX
 ~/My-PSX/scripts/install.sh
 ```
 

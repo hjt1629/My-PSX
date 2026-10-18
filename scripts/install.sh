@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 맥북에 받아 둔 코드로 최신 My PSX를 만들어 응용 프로그램 폴더에 설치하고 다시 켭니다.
-# 처음:   git clone -b claude/photo-viewer-editor https://github.com/hjt1629/My-PSX.git ~/My-PSX
+# 처음:   git clone https://github.com/hjt1629/My-PSX.git ~/My-PSX
 #         ~/My-PSX/scripts/install.sh
 # 이후:   앱 메뉴 My PSX → 업데이트… (또는 이 스크립트를 다시 실행)
 set -euo pipefail
@@ -20,6 +20,13 @@ if ! xcode-select -p >/dev/null 2>&1; then
 fi
 
 echo "▶ 최신 코드 받는 중…"
+git fetch --quiet origin master
+# 예전 작업 브랜치로 받아 둔 경우, 그 내용이 master에 합쳐졌으면 master로 옮겨 갑니다.
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$branch" != "master" ] && git merge-base --is-ancestor HEAD origin/master; then
+    echo "  · '$branch' → master 로 전환"
+    git checkout --quiet master 2>/dev/null || git checkout --quiet -b master --track origin/master
+fi
 git pull --ff-only
 
 echo "▶ 앱 만드는 중… (처음은 몇 분, 이후는 1분 정도)"

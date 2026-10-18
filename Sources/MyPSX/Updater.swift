@@ -50,7 +50,7 @@ enum Updater {
             터미널에서 한 번만 실행하면, 이후에는 이 메뉴로 업데이트할 수 있습니다.
 
             xcode-select --install   (처음 한 번, 이미 있으면 건너뜀)
-            git clone -b claude/photo-viewer-editor https://github.com/hjt1629/My-PSX.git ~/My-PSX
+            git clone https://github.com/hjt1629/My-PSX.git ~/My-PSX
             ~/My-PSX/scripts/install.sh
             """
         alert.addButton(withTitle: "명령어 복사")
@@ -58,7 +58,7 @@ enum Updater {
         if alert.runModal() == .alertFirstButtonReturn {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(
-                "git clone -b claude/photo-viewer-editor https://github.com/hjt1629/My-PSX.git ~/My-PSX && ~/My-PSX/scripts/install.sh",
+                "git clone https://github.com/hjt1629/My-PSX.git ~/My-PSX && ~/My-PSX/scripts/install.sh",
                 forType: .string)
         }
     }
