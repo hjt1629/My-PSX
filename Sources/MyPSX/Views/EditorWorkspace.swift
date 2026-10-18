@@ -92,6 +92,7 @@ private struct EditorContent: View {
             // 사진 편집 탭을 떠나면 열려 있던 도구를 닫습니다.
             guard newTab != .editor else { return }
             tool = nil
+            if editor.mode == .place { editor.cancelPlace() }
             if editor.mode == .crop { editor.cancelCrop() }
         }
         .confirmationDialog("원본 파일을 덮어쓸까요?", isPresented: $confirmOverwrite) {
@@ -118,7 +119,7 @@ private struct EditorContent: View {
         }
     }
 
-    private var isToolActive: Bool { editor.mode == .crop || tool != nil || editor.isAdjusting }
+    private var isToolActive: Bool { editor.mode != .view || tool != nil || editor.isAdjusting }
 
     // MARK: 위 막대 (✕ < > 파일 이름)
 
@@ -308,7 +309,9 @@ private struct EditorContent: View {
     }
 
     private func escape() {
-        if editor.mode == .crop {
+        if editor.mode == .place {
+            editor.cancelPlace()
+        } else if editor.mode == .crop {
             editor.cancelCrop()
         } else if tool != nil {
             tool = nil
@@ -685,18 +688,26 @@ private struct EditorCanvas: View {
                     let frame = zoom.frame(fitted: fitted)
                     let pixelScale = frame.width / size.width
                     Group {
-                        if image.hasAlpha {
-                            Checkerboard()
+                        if isPlacing {
+                            // 흰 배경 캔버스 (놓을 이미지는 PlaceOverlay가 그립니다)
+                            Color.white
+                        } else {
+                            if image.hasAlpha {
+                                Checkerboard()
+                            }
+                            Image(decorative: image, scale: 1)
+                                .resizable()
+                                // 크게 확대하면 픽셀이 또렷하게 보이도록
+                                .interpolation(pixelScale >= 3 ? .none : .high)
                         }
-                        Image(decorative: image, scale: 1)
-                            .resizable()
-                            // 크게 확대하면 픽셀이 또렷하게 보이도록
-                            .interpolation(pixelScale >= 3 ? .none : .high)
                     }
                     .frame(width: frame.width, height: frame.height)
                     .position(x: frame.midX, y: frame.midY)
                     .shadow(color: .black.opacity(0.6), radius: 8)
 
+                    if isPlacing, let layer = editor.placeLayer {
+                        PlaceOverlay(rect: $editor.placeRect, layer: layer, canvasSize: size, canvasFrame: frame)
+                    }
                     if editor.mode == .crop && !showingOriginal {
                         CropOverlay(
                             rect: $editor.cropRect,
@@ -786,6 +797,8 @@ private struct EditorCanvas: View {
         zoom.fittedSize = layoutSize.map { fittedFrame(for: $0, in: viewport).size } ?? .zero
     }
 
+    private var isPlacing: Bool { editor.mode == .place && !showingOriginal }
+
     private var displayedImage: CGImage? {
         if showingOriginal { return editor.originalImage ?? editor.image }
         return editor.previewImage ?? editor.image
@@ -794,6 +807,7 @@ private struct EditorCanvas: View {
     /// 화면 배치는 항상 원본 크기 기준 (미리보기는 작게 줄인 이미지라서)
     private var layoutSize: CGSize? {
         if showingOriginal, let original = editor.originalImage { return original.pixelSize }
+        if isPlacing { return editor.placeCanvas }
         return editor.image?.pixelSize
     }
 

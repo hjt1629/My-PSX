@@ -335,6 +335,51 @@ final class AppFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testPlaceSelectionOnWhiteSquare() async throws {
+        let editor = PhotoEditor(url: folder.appendingPathComponent("photo10.jpg"))
+        await editor.load()
+        editor.beginCrop(aspect: nil)
+        editor.cropRect = CGRect(x: 0, y: 0, width: 20, height: 10)
+
+        editor.beginPlace(canvasSize: 100, margin: 0.1)
+        XCTAssertEqual(editor.mode, .place)
+        XCTAssertEqual(editor.placeCanvas, CGSize(width: 100, height: 100))
+        // 긴 변이 80px(여백 10%)이 되도록 커지고 가운데에
+        XCTAssertEqual(editor.placeRect, CGRect(x: 10, y: 30, width: 80, height: 40))
+        XCTAssertEqual(editor.placementScale, 0.8, accuracy: 0.001)
+
+        // 크기를 줄여도 가운데는 그대로
+        editor.setPlacementScale(0.4)
+        XCTAssertEqual(editor.placeRect, CGRect(x: 30, y: 40, width: 40, height: 20))
+
+        // 취소하면 자르기로 돌아가고 사진은 그대로
+        editor.cancelPlace()
+        XCTAssertEqual(editor.mode, .crop)
+        XCTAssertEqual(editor.image?.width, 40)
+
+        // 배경을 200으로 바꾸면 이미지도 같은 비율로 따라감
+        editor.beginPlace(canvasSize: 100, margin: 0)
+        editor.setPlaceCanvas(size: 200)
+        XCTAssertEqual(editor.placeRect, CGRect(x: 0, y: 50, width: 200, height: 100))
+
+        editor.placeRect.origin.y = 0
+        editor.applyPlace()
+        try await waitForIdle(editor)
+        let result = try XCTUnwrap(editor.image)
+        XCTAssertEqual(editor.mode, .view)
+        XCTAssertEqual(result.width, 200)
+        XCTAssertEqual(result.height, 200)
+        XCTAssertFalse(result.hasAlpha)
+        // 파란 이미지는 위쪽 절반에만, 아래쪽은 흰 배경 (JPG 테두리 오차 1px 허용)
+        let bounds = try XCTUnwrap(ImageOps.contentBounds(result))
+        XCTAssertEqual(bounds.minY, 0, accuracy: 1)
+        XCTAssertEqual(bounds.maxY, 100, accuracy: 2)
+        XCTAssertTrue(editor.canUndo)
+        editor.undo()
+        XCTAssertEqual(editor.image?.width, 40)
+    }
+
+    @MainActor
     func testCanvasZoomKeepsPointUnderCursor() {
         let zoom = CanvasZoom()
         zoom.viewport = CGSize(width: 1000, height: 800)

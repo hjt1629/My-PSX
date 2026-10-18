@@ -50,4 +50,25 @@ final class ProductFitTests: XCTestCase {
         XCTAssertTrue(result.hasAlpha)
         XCTAssertEqual(result.width, 50)
     }
+
+    func testPlaceDrawsAtTopLeftRectOnWhite() throws {
+        let product = TestImages.solid(width: 40, height: 40, gray: 0.2)
+        let result = try ImageOps.place(product, canvasWidth: 100, height: 100,
+                                        at: CGRect(x: 10, y: 20, width: 30, height: 30))
+        XCTAssertEqual(result.width, 100)
+        XCTAssertFalse(result.hasAlpha)
+        let bounds = try XCTUnwrap(ImageOps.contentBounds(result))
+        XCTAssertEqual(bounds.minX, 10, accuracy: 1)
+        XCTAssertEqual(bounds.minY, 20, accuracy: 1)
+        XCTAssertEqual(bounds.width, 30, accuracy: 1)
+        XCTAssertEqual(TestImages.pixel(result, x: 90, y: 90).0, 255)
+    }
+
+    func testPlaceClipsOutsideCanvas() throws {
+        let product = TestImages.solid(width: 40, height: 40, gray: 0.2)
+        let result = try ImageOps.place(product, canvasWidth: 100, height: 100,
+                                        at: CGRect(x: -20, y: 80, width: 40, height: 40))
+        let bounds = try XCTUnwrap(ImageOps.contentBounds(result))
+        XCTAssertEqual(bounds, CGRect(x: 0, y: 80, width: 20, height: 20))
+    }
 }
