@@ -88,6 +88,9 @@ key "0" "using command down"
 # 선택 영역 저장(⌘A) → 저장 창(사진 폴더가 기본) → 취소
 key "a" "using command down";                  shot 12d-save-selection-panel 2
 keycode 53;                                    sleep 1
+# 흰 배경에 놓기(⌘J) → 화면 확인 → Esc로 자르기로 돌아감
+key "j" "using command down";                  shot 12e-place-on-white 1
+keycode 53;                                    shot 12f-back-to-crop 1
 keycode 36;                                    shot 13-crop-applied 2
 
 # 크기 조절 (오른쪽 패널) — 너비 칸에 300 입력
