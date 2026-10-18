@@ -445,13 +445,20 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(editor.image?.hasAlpha, false)
     }
 
-    func testBackgroundJobOutputNames() throws {
+    func testBackgroundJobOutputNamesAndFormats() throws {
         let source = folder.appendingPathComponent("photo10.jpg")
-        XCTAssertEqual(BackgroundJobs.outputURL(for: source, hasAlpha: false).lastPathComponent, "photo10-1.jpg")
-        XCTAssertEqual(BackgroundJobs.outputURL(for: source, hasAlpha: true).lastPathComponent, "photo10-1.png")
+        XCTAssertEqual(BackgroundJobs.outputURL(for: source, fileExtension: "jpg").lastPathComponent, "photo10-1.jpg")
         try Data().write(to: folder.appendingPathComponent("photo10-1.jpg"))
-        XCTAssertEqual(BackgroundJobs.outputURL(for: source, hasAlpha: false).lastPathComponent, "photo10-2.jpg")
+        XCTAssertEqual(BackgroundJobs.outputURL(for: source, fileExtension: "jpg").lastPathComponent, "photo10-2.jpg")
         try FileManager.default.removeItem(at: folder.appendingPathComponent("photo10-1.jpg"))
+
+        var options = CutoutOptions()
+        XCTAssertEqual(options.fileExtension(for: source, hasAlpha: false), "jpg")
+        XCTAssertEqual(options.fileExtension(for: source, hasAlpha: true), "png")
+        options.format = .png
+        XCTAssertEqual(options.fileExtension(for: source, hasAlpha: false), "png")
+        options.format = .jpg
+        XCTAssertEqual(options.fileExtension(for: folder.appendingPathComponent("photo2.png"), hasAlpha: false), "jpg")
     }
 
     @MainActor
@@ -461,11 +468,14 @@ final class AppFlowTests: XCTestCase {
         jobs.onSaved = { saved = $0 }
         let source = folder.appendingPathComponent("photo2.png")
         let image = try ImageLoader.loadFullImage(source)
+        var options = CutoutOptions()
+        options.fitToSquare = true
+        options.squareSize = 64
 
-        jobs.removeBackground(source: source, image: image, ai: FakeAIEditor(), transparent: false, sharpen: 30)
+        jobs.removeBackground(source: source, image: image, ai: FakeAIEditor(), options: options)
         XCTAssertTrue(jobs.isRunning(source))
         // 같은 사진을 또 맡기면 무시
-        jobs.removeBackground(source: source, image: image, ai: FakeAIEditor(), transparent: false, sharpen: 30)
+        jobs.removeBackground(source: source, image: image, ai: FakeAIEditor(), options: options)
         XCTAssertEqual(jobs.jobs.count, 1)
 
         for _ in 0..<200 where saved == nil { try await Task.sleep(for: .milliseconds(20)) }
@@ -474,7 +484,53 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(url.lastPathComponent, "photo2-1.png")
         XCTAssertEqual(url.deletingLastPathComponent().resolvingSymlinksInPath(), folder.resolvingSymlinksInPath())
         XCTAssertFalse(jobs.isRunning(source))
-        XCTAssertEqual(try ImageLoader.loadFullImage(url).width, image.width)
+        // 쇼핑몰 규격: 64 × 64 정사각형
+        let written = try ImageLoader.loadFullImage(url)
+        XCTAssertEqual(written.width, 64)
+        XCTAssertEqual(written.height, 64)
+    }
+
+    @MainActor
+    func testBackgroundJobCancelAndRetry() async throws {
+        let jobs = BackgroundJobs()
+        var saved: URL?
+        jobs.onSaved = { saved = $0 }
+        let source = folder.appendingPathComponent("photo10.jpg")
+        let image = try ImageLoader.loadFullImage(source)
+        let slow = FakeAIEditor(delay: 5)
+
+        jobs.removeBackground(source: source, image: image, ai: slow, options: CutoutOptions())
+        let id = try XCTUnwrap(jobs.jobs.first?.id)
+        jobs.cancel(id)
+        for _ in 0..<200 where jobs.isRunning(source) { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(jobs.jobs.first?.status, .cancelled)
+        XCTAssertNil(saved)
+
+        slow.delay = 0
+        jobs.retry(id)
+        XCTAssertTrue(jobs.isRunning(source))
+        for _ in 0..<200 where saved == nil { try await Task.sleep(for: .milliseconds(20)) }
+        let url = try XCTUnwrap(saved)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(url.lastPathComponent, "photo10-1.jpg")
+        jobs.clearFinished()
+        XCTAssertTrue(jobs.jobs.isEmpty)
+    }
+
+    @MainActor
+    func testRenameAndResultFilter() async throws {
+        XCTAssertTrue(FolderBrowser.isNumberedResult(URL(fileURLWithPath: "/a/상품-1.png")))
+        XCTAssertTrue(FolderBrowser.isNumberedResult(URL(fileURLWithPath: "/a/IMG_0001-12.jpg")))
+        XCTAssertFalse(FolderBrowser.isNumberedResult(URL(fileURLWithPath: "/a/IMG_0001.jpg")))
+        XCTAssertFalse(FolderBrowser.isNumberedResult(URL(fileURLWithPath: "/a/2024-summer.jpg")))
+
+        let browser = FolderBrowser(launchArguments: [])
+        let original = folder.appendingPathComponent("photo2.png")
+        let renamed = try XCTUnwrap(browser.rename(original, to: "새 이름"))
+        XCTAssertEqual(renamed.lastPathComponent, "새 이름.png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: renamed.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+        _ = browser.rename(renamed, to: "photo2.png")
     }
 
     @MainActor
@@ -591,8 +647,12 @@ final class FakeAIEditor: AIImageEditor, @unchecked Sendable {
     private var _prompts: [String] = []
     private var _transparentFlags: [Bool] = []
 
-    init(supportsTransparentBackground: Bool = false) {
+    /// 결과를 내기 전 기다리는 시간(초). 취소 테스트용
+    var delay: Double = 0
+
+    init(supportsTransparentBackground: Bool = false, delay: Double = 0) {
         self.supportsTransparentBackground = supportsTransparentBackground
+        self.delay = delay
     }
 
     var prompts: [String] { lock.lock(); defer { lock.unlock() }; return _prompts }
@@ -603,6 +663,7 @@ final class FakeAIEditor: AIImageEditor, @unchecked Sendable {
         _prompts.append(prompt)
         _transparentFlags.append(transparentBackground)
         lock.unlock()
+        if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
         let alpha = transparentBackground
         let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
                                 bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,

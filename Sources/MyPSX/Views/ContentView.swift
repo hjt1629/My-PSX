@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var browser: FolderBrowser
@@ -60,6 +61,15 @@ struct ContentView: View {
             Button("확인") {}
         } message: {
             Text(jobs.errorMessage ?? "")
+        }
+        // Finder에서 사진이나 폴더를 끌어다 놓으면 엽니다.
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                Task { @MainActor in browser.openDropped(url) }
+            }
+            return true
         }
         .onAppear {
             // 뒤에서 끝난 배경 제거 결과가 바로 썸네일 목록에 나타나도록

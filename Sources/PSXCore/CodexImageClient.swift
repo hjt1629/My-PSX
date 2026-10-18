@@ -253,39 +253,56 @@ public struct LoginShellRunner: CommandRunning {
 
     public func run(_ arguments: [String], in directory: URL, environment: [String: String],
                     timeout: TimeInterval) async throws -> CommandResult {
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            // 인자는 따옴표 문제 없이 "$0" "$@"로 그대로 넘깁니다.
-            process.arguments = ["-lc", "exec \"$0\" \"$@\""] + arguments
-            process.currentDirectoryURL = directory
-            process.environment = environment
-            process.standardInput = FileHandle.nullDevice
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        // 인자는 따옴표 문제 없이 "$0" "$@"로 그대로 넘깁니다.
+        process.arguments = ["-lc", "exec \"$0\" \"$@\""] + arguments
+        process.currentDirectoryURL = directory
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+        let handle = ProcessHandle(process)
 
-            try process.run()
-            let deadline = DispatchTime.now() + timeout
-            let timer = DispatchSource.makeTimerSource(queue: .global())
-            let timedOut = TimedOutFlag()
-            timer.schedule(deadline: deadline)
-            timer.setEventHandler {
-                if process.isRunning {
-                    timedOut.set()
-                    process.terminate()
+        // 작업을 취소하면 실행 중인 프로그램도 멈춥니다.
+        let result = try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                let process = handle.process
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
+
+                try process.run()
+                let deadline = DispatchTime.now() + timeout
+                let timer = DispatchSource.makeTimerSource(queue: .global())
+                let timedOut = TimedOutFlag()
+                timer.schedule(deadline: deadline)
+                timer.setEventHandler {
+                    if process.isRunning {
+                        timedOut.set()
+                        process.terminate()
+                    }
                 }
-            }
-            timer.resume()
+                timer.resume()
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            timer.cancel()
-            return CommandResult(status: process.terminationStatus,
-                                 output: String(decoding: data, as: UTF8.self),
-                                 timedOut: timedOut.value)
-        }.value
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                timer.cancel()
+                return CommandResult(status: process.terminationStatus,
+                                     output: String(decoding: data, as: UTF8.self),
+                                     timedOut: timedOut.value)
+            }.value
+        } onCancel: {
+            handle.terminate()
+        }
+        try Task.checkCancellation()
+        return result
     }
+}
+
+/// 다른 스레드에서 프로세스를 멈추기 위한 포장
+private final class ProcessHandle: @unchecked Sendable {
+    let process: Process
+    init(_ process: Process) { self.process = process }
+    func terminate() { if process.isRunning { process.terminate() } }
 }
 
 private final class TimedOutFlag: @unchecked Sendable {

@@ -167,6 +167,13 @@ final class PhotoEditor: ObservableObject {
         }
     }
 
+    /// 상품을 정사각형 캔버스 가운데에 여백을 두고 놓습니다. (쇼핑몰 규격)
+    func fitToSquare(size: Int, margin: Double, transparent: Bool) {
+        perform("정사각형으로 맞추는 중…") { image in
+            try ImageOps.fitToSquare(image, size: size, margin: margin, transparent: transparent && image.hasAlpha)
+        }
+    }
+
     /// 투명한 부분을 지정한 색으로 채웁니다.
     func fillBackground(_ color: CGColor) {
         perform("배경 채우는 중…") { try ImageOps.flatten($0, background: color) }

@@ -55,7 +55,7 @@ private struct EditorContent: View {
     @State private var confirmOverwrite = false
     @AppStorage("cutoutTransparent") private var cutoutTransparent = false
     @AppStorage("cutoutLargestOnly") private var cutoutLargestOnly = true
-    @AppStorage("cutoutSharpen") private var cutoutSharpen = 30.0
+    private var cutout = CutoutSettings()
     @EnvironmentObject private var gpt: GPTSettings
     @EnvironmentObject private var jobs: BackgroundJobs
     @AppStorage("rightPanelWidth") private var rightWidth: Double = 270
@@ -174,15 +174,8 @@ private struct EditorContent: View {
                 Text("· \(timing)").monospacedDigit().lineLimit(1)
                     .foregroundStyle(Theme.accent)
             }
-            if jobs.runningCount > 0 {
-                Label("배경 제거 중 \(jobs.runningCount)장", systemImage: "hourglass")
-                    .lineLimit(1)
-                    .foregroundStyle(Theme.accent)
-            } else if let job = jobs.lastFinished, case .saved(let url) = job.status {
-                Text("· \(url.lastPathComponent) 저장\(job.seconds.map { " · \($0)초" } ?? "")")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(Theme.accent)
+            if !jobs.jobs.isEmpty {
+                JobsButton()
             }
 
             Spacer(minLength: 12)
@@ -373,8 +366,7 @@ private struct EditorContent: View {
         browser.tab = .cutout
         if gpt.isReady, let ai = gpt.makeEditor() {
             if let image = editor.image {
-                jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai,
-                                      transparent: cutoutTransparent, sharpen: cutoutSharpen)
+                jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai, options: cutout.options)
             }
         } else {
             editor.removeBackground(transparent: cutoutTransparent, largestOnly: cutoutLargestOnly)
@@ -388,6 +380,115 @@ private struct EditorContent: View {
                 browser.reload()
             }
         }
+    }
+}
+
+/// 아래 막대: 배경 제거 작업 현황. 누르면 목록(취소 · 다시 하기 · 결과 열기)
+private struct JobsButton: View {
+    @EnvironmentObject private var jobs: BackgroundJobs
+    @EnvironmentObject private var browser: FolderBrowser
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing.toggle() } label: {
+            HStack(spacing: 4) {
+                if jobs.runningCount > 0 {
+                    ProgressView().controlSize(.mini)
+                    Text("배경 제거 중 \(jobs.runningCount)장")
+                } else if let job = jobs.lastFinished, case .saved(let url) = job.status {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("\(url.lastPathComponent) 저장\(job.seconds.map { " · \($0)초" } ?? "")")
+                        .truncationMode(.middle)
+                } else {
+                    Image(systemName: "list.bullet")
+                    Text("작업 \(jobs.jobs.count)")
+                }
+                if jobs.failedCount > 0 {
+                    Text("· 실패 \(jobs.failedCount)").foregroundStyle(.orange)
+                }
+            }
+            .lineLimit(1)
+            .foregroundStyle(Theme.accent)
+        }
+        .buttonStyle(.plain)
+        .help("배경 제거 작업 목록")
+        .popover(isPresented: $showing, arrowEdge: .top) {
+            JobsList { url in
+                showing = false
+                browser.openPhoto(url, in: browser.tab)
+            }
+            .environmentObject(jobs)
+        }
+    }
+}
+
+private struct JobsList: View {
+    @EnvironmentObject private var jobs: BackgroundJobs
+    let open: (URL) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("배경 제거 작업").font(.headline)
+                Spacer()
+                if jobs.failedCount > 0 {
+                    Button("실패 모두 다시") { jobs.retryFailed() }
+                }
+                Button("끝난 것 지우기") { jobs.clearFinished() }
+                    .disabled(jobs.jobs.allSatisfy(\.isRunning))
+            }
+            .padding(10)
+            Divider()
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(jobs.jobs.reversed()) { job in
+                        row(job)
+                        Divider()
+                    }
+                }
+            }
+            .frame(maxHeight: 320)
+        }
+        .frame(width: 420)
+    }
+
+    private func row(_ job: BackgroundJobs.Job) -> some View {
+        HStack(spacing: 8) {
+            ThumbnailView(url: job.source).frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(job.source.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                Group {
+                    switch job.status {
+                    case .running:
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text("진행 중 · \(Int(context.date.timeIntervalSince(job.started)))초")
+                        }
+                    case .saved(let url):
+                        Text("→ \(url.lastPathComponent)\(job.seconds.map { " · \($0)초" } ?? "")")
+                    case .failed(let message):
+                        Text("실패 · \(message)").foregroundStyle(.orange).lineLimit(2)
+                    case .cancelled:
+                        Text("취소됨").foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            switch job.status {
+            case .running:
+                Button("취소") { jobs.cancel(job.id) }
+            case .saved(let url):
+                Button("원본") { open(job.source) }
+                Button("결과 열기") { open(url) }
+                    .buttonStyle(.borderedProminent)
+            case .failed, .cancelled:
+                Button("다시 하기") { jobs.retry(job.id) }
+            }
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 }
 
@@ -499,6 +600,11 @@ private struct EditorThumbnails: View {
                                                     isProcessing: jobs.isRunning(url))
                                     .id(url)
                                     .onTapGesture { open(url) }
+                                    .contextMenu {
+                                        Button("Finder에서 보기") { browser.revealInFinder(url) }
+                                        Divider()
+                                        Button("휴지통으로 이동", role: .destructive) { browser.moveToTrash(url) }
+                                    }
                             }
                         }
                         .padding(8)

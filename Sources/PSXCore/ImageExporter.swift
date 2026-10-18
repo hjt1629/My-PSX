@@ -32,7 +32,10 @@ public enum ImageExporter {
             output = try ImageOps.flatten(image)
         }
 
-        let properties = metadata(from: source, for: type)
+        var properties = metadata(from: source, for: type)
+        if type.conforms(to: .jpeg) || type.conforms(to: .heic) {
+            properties[kCGImageDestinationLossyCompressionQuality] = 0.92
+        }
         let fileManager = FileManager.default
         let temporaryURL = url.deletingLastPathComponent()
             .appendingPathComponent(".\(UUID().uuidString).\(url.pathExtension)")

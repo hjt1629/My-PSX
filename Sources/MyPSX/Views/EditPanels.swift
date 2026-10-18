@@ -639,10 +639,10 @@ private struct AdjustSlider: View {
 private struct AIEditPanel: View {
     @EnvironmentObject private var gpt: GPTSettings
     @EnvironmentObject private var jobs: BackgroundJobs
+    private var cutout = CutoutSettings()
     @ObservedObject var editor: PhotoEditor
     @State private var prompt = ""
     @AppStorage("cutoutTransparent") private var transparent = false
-    @AppStorage("cutoutSharpen") private var sharpen = 30.0
 
     private let examples = [
         "상품만 남기고 배경을 연회색으로 바꿔줘",
@@ -691,8 +691,7 @@ private struct AIEditPanel: View {
             // 기본 기능: 글을 쓰지 않고 한 번에 상품만 남기기
             Button {
                 guard let ai = gpt.makeEditor(), let image = editor.image else { return }
-                jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai,
-                                      transparent: transparent, sharpen: sharpen)
+                jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai, options: cutout.options)
             } label: {
                 VStack(spacing: 2) {
                     Label("빠른 배경 제거 (상품만 남기기)", systemImage: "bolt.fill")
@@ -779,11 +778,92 @@ private struct AIEditPanel: View {
     }
 }
 
+// MARK: - 쇼핑몰 규격 (정사각형 + 여백) / 저장 형식
+
+private struct ShopFitOptions: View {
+    @ObservedObject var editor: PhotoEditor
+    @AppStorage("shopFitEnabled") private var enabled = false
+    @AppStorage("shopFitSize") private var size = 1000
+    @AppStorage("shopFitMargin") private var margin = 0.1
+    @AppStorage("cutoutFormat") private var format: CutoutOptions.Format = .original
+    @AppStorage("cutoutTransparent") private var transparent = false
+
+    private let sizes = [800, 1000, 1200, 1500, 2000]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $enabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("정사각형 가운데 맞춤")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.text)
+                    Text("배경 제거 결과를 상품 크기에 맞춰 가운데 놓고 여백을 둡니다")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            HStack(spacing: 6) {
+                Text("크기").font(.system(size: 11)).foregroundStyle(Theme.text)
+                Picker("크기", selection: $size) {
+                    ForEach(sizes, id: \.self) { Text("\($0) × \($0)").tag($0) }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack {
+                    Text("여백").font(.system(size: 11)).foregroundStyle(Theme.text)
+                    Spacer()
+                    Text("\(Int((margin * 100).rounded()))%")
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.accent)
+                }
+                Slider(value: Binding(get: { margin }, set: { margin = ($0 * 100).rounded() / 100 }), in: 0...0.3)
+                    .controlSize(.mini)
+            }
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.5)
+
+            Button {
+                editor.fitToSquare(size: size, margin: margin, transparent: transparent)
+            } label: {
+                Label("지금 사진에 바로 적용", systemImage: "square.dashed")
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+            }
+            .buttonStyle(DarkButtonStyle())
+            .disabled(!editor.canEdit)
+            .help("편집 중인 사진을 지금 설정(크기·여백)으로 맞춥니다. 되돌리기 가능")
+
+            HStack(spacing: 6) {
+                Text("저장 형식").font(.system(size: 11)).foregroundStyle(Theme.text)
+                Picker("저장 형식", selection: $format) {
+                    ForEach(CutoutOptions.Format.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+            }
+            Text("JPG는 품질 92로 저장합니다. 투명 배경은 항상 PNG.")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.secondaryText)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+    }
+}
+
 // MARK: - 오려내기 탭의 오른쪽 패널
 
 struct CutOutPanel: View {
     @EnvironmentObject private var gpt: GPTSettings
     @EnvironmentObject private var jobs: BackgroundJobs
+    private var cutout = CutoutSettings()
     @ObservedObject var editor: PhotoEditor
     let saveAsPNG: () -> Void
 
@@ -842,8 +922,7 @@ struct CutOutPanel: View {
                 // 기본: GPT(Codex 또는 API)가 상품만 남기고 나머지를 흰색/투명으로 — 맥 AI는 쓰지 않음
                 Button {
                     guard let ai = gpt.makeEditor(), let image = editor.image else { return }
-                    jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai,
-                                          transparent: transparent, sharpen: sharpen)
+                    jobs.removeBackground(source: editor.sourceURL, image: image, ai: ai, options: cutout.options)
                 } label: {
                     VStack(spacing: 2) {
                         Label("빠른 배경 제거", systemImage: "bolt.fill")
@@ -868,6 +947,9 @@ struct CutOutPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
                     .padding(.top, 4)
+
+                PanelHeader(title: "쇼핑몰 규격으로 마무리")
+                ShopFitOptions(editor: editor)
 
                 PanelHeader(title: "인터넷 없이")
                 Button {

@@ -47,6 +47,10 @@ final class FolderBrowser: ObservableObject {
     /// 저장하지 않은 변경사항 때문에 확인을 기다리는 이동 동작
     @Published var pendingNavigation: PendingNavigation?
     @Published var errorMessage: String?
+    /// 배경 제거 결과(`이름-1`, `이름-2` …)만 보기
+    @Published var resultsOnly = false {
+        didSet { if resultsOnly != oldValue { reload() } }
+    }
 
     struct PendingNavigation {
         let action: () -> Void
@@ -192,7 +196,8 @@ final class FolderBrowser: ObservableObject {
             case .success(let contents):
                 subfolders = contents.folders
                 fileInfo = contents.info
-                photos = FolderBrowser.sorted(contents.photos, info: contents.info, by: sort, ascending: sortAscending)
+                let sorted = FolderBrowser.sorted(contents.photos, info: contents.info, by: sort, ascending: sortAscending)
+                photos = resultsOnly ? sorted.filter(FolderBrowser.isNumberedResult) : sorted
                 // /var → /private/var 처럼 같은 파일이 다른 경로로 보일 수 있어 실제 경로로 맞춥니다.
                 if let match = matching(openedPhoto, in: photos) { openedPhoto = match }
                 selectedPhoto = matching(selectedPhoto, in: photos)
@@ -377,6 +382,76 @@ final class FolderBrowser: ObservableObject {
             favorites.append(url)
         }
         UserDefaults.standard.set(favorites.map(\.path), forKey: favoritesKey)
+    }
+
+    /// `사진-1.jpg`처럼 이름 끝이 `-숫자`인 파일 (배경 제거 결과)
+    nonisolated static func isNumberedResult(_ url: URL) -> Bool {
+        url.deletingPathExtension().lastPathComponent.wholeMatch(of: #/.+-\d+/#) != nil
+    }
+
+    /// 휴지통으로 옮깁니다. (Finder에서 되돌리기 가능) 선택은 다음 사진으로 넘어갑니다.
+    func moveToTrash(_ url: URL) {
+        let index = photos.firstIndex(of: url)
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        } catch {
+            errorMessage = "휴지통으로 옮기지 못했습니다.\n\(error.localizedDescription)"
+            return
+        }
+        ThumbnailLoader.shared.invalidate(url)
+        var remaining = photos
+        remaining.removeAll { $0 == url }
+        let next = index.flatMap { remaining.isEmpty ? nil : remaining[min($0, remaining.count - 1)] }
+        if openedPhoto == url {
+            if let next { openPhoto(next, in: tab) } else { closePhoto() }
+        }
+        if previewPhoto == url { previewPhoto = next }
+        selectedPhoto = next
+        photos = remaining
+        reload()
+    }
+
+    /// 이름 바꾸기. 확장자를 빼고 입력하면 원래 확장자를 붙입니다.
+    @discardableResult
+    func rename(_ url: URL, to newName: String) -> URL? {
+        var name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("/") else { return nil }
+        if (name as NSString).pathExtension.isEmpty { name += "." + url.pathExtension }
+        let destination = url.deletingLastPathComponent().appendingPathComponent(name)
+        guard destination != url else { return url }
+        guard !FileManager.default.fileExists(atPath: destination.path) else {
+            errorMessage = "같은 이름의 파일이 이미 있습니다: \(name)"
+            return nil
+        }
+        do {
+            try FileManager.default.moveItem(at: url, to: destination)
+        } catch {
+            errorMessage = "이름을 바꾸지 못했습니다.\n\(error.localizedDescription)"
+            return nil
+        }
+        ThumbnailLoader.shared.invalidate(url)
+        if selectedPhoto == url { selectedPhoto = destination }
+        if previewPhoto == url { previewPhoto = destination }
+        if openedPhoto == url {
+            closePhoto()
+            openPhoto(destination, in: tab)
+        }
+        reload()
+        return destination
+    }
+
+    /// Finder에서 끌어다 놓은 파일 / 폴더 열기
+    func openDropped(_ url: URL) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return }
+        if isDirectory.boolValue {
+            requestNavigation { self.open(folder: url) }
+        } else if ImageLoader.isSupportedImage(url) {
+            requestNavigation {
+                self.open(folder: url.deletingLastPathComponent())
+                self.openPhoto(url, in: self.tab == .viewer ? .editor : self.tab)
+            }
+        }
     }
 
     func revealInFinder(_ url: URL) {

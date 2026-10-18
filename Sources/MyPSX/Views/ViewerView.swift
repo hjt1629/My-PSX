@@ -400,8 +400,11 @@ private struct SortMenu: View {
                 Text("내림차순").tag(false)
             }
             .pickerStyle(.inline)
+            Divider()
+            Toggle("배경 제거 결과만 보기 (이름-1, -2 …)", isOn: $browser.resultsOnly)
         } label: {
-            Label("정렬: \(browser.sort.title)", systemImage: "arrow.up.arrow.down")
+            Label(browser.resultsOnly ? "정렬: \(browser.sort.title) · 결과만" : "정렬: \(browser.sort.title)",
+                  systemImage: browser.resultsOnly ? "line.3.horizontal.decrease.circle.fill" : "arrow.up.arrow.down")
                 .font(.system(size: 12))
         }
         .menuStyle(.borderlessButton)
@@ -419,6 +422,8 @@ private struct ThumbnailGrid: View {
     @AppStorage("thumbnailSize") private var thumbnailSize: Double = 150
     /// 한 줄에 들어가는 칸 수 (↑ / ↓ 이동에 사용)
     @State private var columns = 1
+    @State private var renaming: URL?
+    @State private var renameText = ""
 
     private let spacing: CGFloat = 6
     private let padding: CGFloat = 12
@@ -492,7 +497,10 @@ private struct ThumbnailGrid: View {
                                     Button("사진 편집") { browser.openPhoto(photo, in: .editor) }
                                     Button("오려내기 (배경 제거)") { browser.openPhoto(photo, in: .cutout) }
                                     Divider()
+                                    Button("이름 바꾸기… (⇧⌘R)") { beginRename(photo) }
                                     Button("Finder에서 보기") { browser.revealInFinder(photo) }
+                                    Divider()
+                                    Button("휴지통으로 이동 (⌘⌫)", role: .destructive) { browser.moveToTrash(photo) }
                                 }
                         }
                     }
@@ -508,6 +516,16 @@ private struct ThumbnailGrid: View {
         }
         .id(browser.currentFolder)
         .background { keyboard }
+        .alert("이름 바꾸기", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("새 이름", text: $renameText)
+            Button("바꾸기") {
+                if let url = renaming { browser.rename(url, to: renameText) }
+                renaming = nil
+            }
+            Button("취소", role: .cancel) { renaming = nil }
+        } message: {
+            Text("확장자(.\(renaming?.pathExtension ?? ""))는 그대로 둡니다.")
+        }
     }
 
     /// LazyVGrid(.adaptive)와 같은 방식으로 한 줄 칸 수를 계산합니다.
@@ -532,9 +550,18 @@ private struct ThumbnailGrid: View {
                 .keyboardShortcut(.return, modifiers: [])
             Button("") { previewSelected() }
                 .keyboardShortcut(.space, modifiers: [])
+            Button("") { if let photo = browser.selectedPhoto { browser.moveToTrash(photo) } }
+                .keyboardShortcut(.delete, modifiers: .command)
+            Button("") { if let photo = browser.selectedPhoto { beginRename(photo) } }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
         }
         .opacity(0)
         .allowsHitTesting(false)
+    }
+
+    private func beginRename(_ photo: URL) {
+        renameText = photo.deletingPathExtension().lastPathComponent
+        renaming = photo
     }
 
     /// 폴더 칸까지 포함한 격자 위치 기준으로 위아래 이동
