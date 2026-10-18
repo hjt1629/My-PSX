@@ -362,7 +362,12 @@ final class AppFlowTests: XCTestCase {
         editor.setPlaceCanvas(size: 200)
         XCTAssertEqual(editor.placeRect, CGRect(x: 0, y: 50, width: 200, height: 100))
 
+        // 꽉 차게 놓으면 좌우 끝에 딱 맞음
+        XCTAssertEqual(PlaceOverlay.touchingEdges(of: editor.placeRect, canvas: editor.placeCanvas), [.left, .right])
         editor.placeRect.origin.y = 0
+        XCTAssertEqual(PlaceOverlay.touchingEdges(of: editor.placeRect, canvas: editor.placeCanvas), [.left, .right, .top])
+        XCTAssertEqual(PlaceOverlay.touchingEdges(of: CGRect(x: 1, y: 1, width: 10, height: 10),
+                                                  canvas: editor.placeCanvas), [])
         editor.applyPlace()
         try await waitForIdle(editor)
         let result = try XCTUnwrap(editor.image)

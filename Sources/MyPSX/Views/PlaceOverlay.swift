@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// 흰 배경 캔버스 위에 놓을 이미지를 그리고 드래그로 옮기거나 크기를 바꾸게 해줍니다.
-/// - 이미지 안쪽 드래그: 이동 (캔버스 가운데에 가까워지면 딱 붙음)
-/// - 모서리 손잡이 드래그: 비율을 지킨 채 크기 조절 (반대쪽 모서리 고정)
+/// - 이미지 안쪽 드래그: 이동 (캔버스 가운데·끝에 가까워지면 딱 붙음)
+/// - 모서리 손잡이 드래그: 비율을 지킨 채 크기 조절 (반대쪽 모서리 고정, 캔버스 끝에 딱 붙음)
+/// 이미지 가장자리가 캔버스 끝에 딱 맞으면 그 변을 초록 선으로 표시합니다.
 /// 캔버스 밖으로 나간 부분은 잘려 보이고, 적용할 때도 잘립니다.
 struct PlaceOverlay: View {
     /// 픽셀 단위, 왼쪽 위 원점
@@ -15,6 +16,9 @@ struct PlaceOverlay: View {
     @State private var dragMode: DragMode?
     @State private var startRect: CGRect = .zero
     @State private var snapped = (x: false, y: false)
+
+    /// 화면상 이 거리(pt) 안으로 들어오면 딱 붙습니다.
+    private let snapDistance: CGFloat = 6
 
     private enum DragMode {
         case move
@@ -54,6 +58,16 @@ struct PlaceOverlay: View {
 
             Path { path in path.addRect(viewRect) }
                 .stroke(Theme.accent, lineWidth: 1.5)
+
+            // 캔버스 끝에 딱 맞은 변
+            Path { path in
+                for edge in touchingEdges {
+                    let (from, to) = edge.line(in: canvasFrame)
+                    path.move(to: from)
+                    path.addLine(to: to)
+                }
+            }
+            .stroke(Color.green, lineWidth: 3)
 
             ForEach(CropOverlay.Corner.allCases, id: \.self) { corner in
                 RoundedRectangle(cornerRadius: 2)
@@ -100,14 +114,62 @@ struct PlaceOverlay: View {
 
     private func move(by translation: CGSize) {
         var moved = startRect.offsetBy(dx: translation.width / scale, dy: translation.height / scale)
-        // 가운데에서 화면상 6pt 안이면 딱 맞춥니다.
-        let tolerance = 6 / scale
-        let snapX = abs(moved.midX - canvasSize.width / 2) < tolerance
-        let snapY = abs(moved.midY - canvasSize.height / 2) < tolerance
-        if snapX { moved.origin.x = (canvasSize.width - moved.width) / 2 }
-        if snapY { moved.origin.y = (canvasSize.height - moved.height) / 2 }
-        snapped = (snapX, snapY)
+        let tolerance = snapDistance / scale
+        // 왼쪽 끝 / 오른쪽 끝 / 가운데 중 가장 가까운 곳에 딱 맞춥니다.
+        let x = Self.nearestSnap([(0 - moved.minX, false), (canvasSize.width - moved.maxX, false),
+                                  (canvasSize.width / 2 - moved.midX, true)], tolerance: tolerance)
+        let y = Self.nearestSnap([(0 - moved.minY, false), (canvasSize.height - moved.maxY, false),
+                                  (canvasSize.height / 2 - moved.midY, true)], tolerance: tolerance)
+        if let x { moved.origin.x += x.offset }
+        if let y { moved.origin.y += y.offset }
+        snapped = (x?.isCenter ?? false, y?.isCenter ?? false)
         rect = moved
+    }
+
+    /// (옮길 거리, 가운데인지) 후보 중 tolerance 안에서 가장 가까운 것
+    private static func nearestSnap(_ candidates: [(CGFloat, Bool)], tolerance: CGFloat) -> (offset: CGFloat, isCenter: Bool)? {
+        candidates.filter { abs($0.0) < tolerance }
+            .min { abs($0.0) < abs($1.0) }
+            .map { (offset: $0.0, isCenter: $0.1) }
+    }
+
+    // MARK: 끝 표시
+
+    enum Edge: CaseIterable {
+        case left, right, top, bottom
+
+        var title: String {
+            switch self {
+            case .left: return "왼쪽"
+            case .right: return "오른쪽"
+            case .top: return "위"
+            case .bottom: return "아래"
+            }
+        }
+
+        func line(in frame: CGRect) -> (CGPoint, CGPoint) {
+            switch self {
+            case .left: return (CGPoint(x: frame.minX, y: frame.minY), CGPoint(x: frame.minX, y: frame.maxY))
+            case .right: return (CGPoint(x: frame.maxX, y: frame.minY), CGPoint(x: frame.maxX, y: frame.maxY))
+            case .top: return (CGPoint(x: frame.minX, y: frame.minY), CGPoint(x: frame.maxX, y: frame.minY))
+            case .bottom: return (CGPoint(x: frame.minX, y: frame.maxY), CGPoint(x: frame.maxX, y: frame.maxY))
+            }
+        }
+    }
+
+    /// 이미지 가장자리가 캔버스 끝에 딱 맞은 변들 (반 픽셀 오차 허용)
+    private var touchingEdges: [Edge] {
+        Self.touchingEdges(of: rect, canvas: canvasSize)
+    }
+
+    static func touchingEdges(of rect: CGRect, canvas: CGSize) -> [Edge] {
+        let e: CGFloat = 0.5
+        var edges: [Edge] = []
+        if abs(rect.minX) < e { edges.append(.left) }
+        if abs(rect.maxX - canvas.width) < e { edges.append(.right) }
+        if abs(rect.minY) < e { edges.append(.top) }
+        if abs(rect.maxY - canvas.height) < e { edges.append(.bottom) }
+        return edges
     }
 
     private func resize(corner: CropOverlay.Corner, to location: CGPoint) {
@@ -119,7 +181,20 @@ struct PlaceOverlay: View {
         let signY: CGFloat = (corner == .bottomLeft || corner == .bottomRight) ? 1 : -1
         let dx = max(0, (point.x - anchor.x) * signX)
         let dy = max(0, (point.y - anchor.y) * signY)
-        let width = max(max(dx, dy * aspect), 8)
+        var width = max(max(dx, dy * aspect), 8)
+        // 끌고 있는 변이 캔버스 끝에 가까우면 딱 맞춥니다. (가로 끝 또는 세로 끝 중 가까운 쪽)
+        let tolerance = snapDistance / scale
+        let edgeX = signX > 0 ? canvasSize.width : 0
+        let edgeY = signY > 0 ? canvasSize.height : 0
+        let widthToX = (edgeX - anchor.x) * signX
+        let widthToY = (edgeY - anchor.y) * signY * aspect
+        // 가로는 너비 차이, 세로는 높이 차이(= 너비 차이 / 비율)로 거리를 잽니다.
+        let candidates = [widthToX, widthToY].enumerated()
+            .filter { $0.element > 8 && abs($0.element - width) / ($0.offset == 0 ? 1 : aspect) < tolerance }
+            .map(\.element)
+        if let snap = candidates.min(by: { abs($0 - width) < abs($1 - width) }) {
+            width = snap
+        }
         let height = width / aspect
         rect = CGRect(x: signX > 0 ? anchor.x : anchor.x - width,
                       y: signY > 0 ? anchor.y : anchor.y - height,

@@ -365,7 +365,7 @@ private struct PlacePanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PanelHeader(title: "흰 배경에 놓기")
-            Text("이미지 안쪽을 끌면 위치가, 모서리를 끌면 크기가 바뀝니다. 가운데에 가까우면 딱 붙습니다. 배경 밖으로 나간 부분은 잘립니다.")
+            Text("이미지 안쪽을 끌면 위치가, 모서리를 끌면 크기가 바뀝니다. 가운데나 배경 끝에 가까우면 딱 붙고, 끝에 맞은 변은 초록 선으로 표시됩니다. 배경 밖으로 나간 부분은 잘립니다.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -399,7 +399,15 @@ private struct PlacePanel: View {
                     .controlSize(.small)
             }
             .padding(.horizontal, 14)
-            .padding(.bottom, 10)
+            .padding(.bottom, 6)
+
+            let edges = PlaceOverlay.touchingEdges(of: editor.placeRect, canvas: editor.placeCanvas)
+            Label(edges.isEmpty ? "배경 끝에 닿은 변 없음" : "배경 끝에 딱 맞음: " + edges.map(\.title).joined(separator: " · "),
+                  systemImage: edges.isEmpty ? "square.dashed" : "checkmark.square.fill")
+                .font(.system(size: 11, weight: edges.isEmpty ? .regular : .semibold))
+                .foregroundStyle(edges.isEmpty ? Theme.secondaryText : Color.green)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
 
             VStack(spacing: 6) {
                 placeButton("가운데로", systemImage: "align.horizontal.center") { editor.centerPlacement() }
