@@ -1,0 +1,63 @@
+name: Build
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build -c release
+      - name: Test
+        run: swift test
+      - name: Package .app
+        run: ./scripts/build-app.sh
+        env:
+          BUILD: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Zip .app
+        # GitHub 아티팩트는 실행 권한을 지우므로, 권한을 보존하는 ditto로 먼저 묶습니다.
+        # 받은 뒤 MyPSX.zip을 더블클릭하면 바로 실행할 수 있는 MyPSX.app이 나옵니다.
+        run: ditto -c -k --keepParent build/MyPSX.app build/MyPSX.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyPSX-app
+          path: build/MyPSX.zip
+
+  ui-smoke:
+    # 실제 앱을 띄워 조작하고 스크린샷을 남깁니다.
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package .app
+        run: ./scripts/build-app.sh
+        env:
+          BUILD: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install cliclick
+        run: brew install cliclick || true
+      - name: Run UI smoke test
+        run: ./scripts/ui-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-screenshots
+          path: build/screenshots
+      - name: Publish screenshots to the ci-screenshots branch
+        # 같은 저장소의 PR에서만 (외부 포크에는 쓰기 권한이 없음)
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          cd build/screenshots
+          git init -q -b ci-screenshots
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "UI screenshots for ${{ github.event.pull_request.head.sha }}"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git" ci-screenshots
