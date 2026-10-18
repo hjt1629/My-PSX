@@ -116,10 +116,14 @@ struct PlaceOverlay: View {
         var moved = startRect.offsetBy(dx: translation.width / scale, dy: translation.height / scale)
         let tolerance = snapDistance / scale
         // 왼쪽 끝 / 오른쪽 끝 / 가운데 중 가장 가까운 곳에 딱 맞춥니다.
-        let x = Self.nearestSnap([(0 - moved.minX, false), (canvasSize.width - moved.maxX, false),
-                                  (canvasSize.width / 2 - moved.midX, true)], tolerance: tolerance)
-        let y = Self.nearestSnap([(0 - moved.minY, false), (canvasSize.height - moved.maxY, false),
-                                  (canvasSize.height / 2 - moved.midY, true)], tolerance: tolerance)
+        let toLeft: CGFloat = -moved.minX
+        let toRight: CGFloat = canvasSize.width - moved.maxX
+        let toCenterX: CGFloat = canvasSize.width / 2 - moved.midX
+        let toTop: CGFloat = -moved.minY
+        let toBottom: CGFloat = canvasSize.height - moved.maxY
+        let toCenterY: CGFloat = canvasSize.height / 2 - moved.midY
+        let x = Self.nearestSnap([(toLeft, false), (toRight, false), (toCenterX, true)], tolerance: tolerance)
+        let y = Self.nearestSnap([(toTop, false), (toBottom, false), (toCenterY, true)], tolerance: tolerance)
         if let x { moved.origin.x += x.offset }
         if let y { moved.origin.y += y.offset }
         snapped = (x?.isCenter ?? false, y?.isCenter ?? false)
@@ -189,11 +193,14 @@ struct PlaceOverlay: View {
         let widthToX = (edgeX - anchor.x) * signX
         let widthToY = (edgeY - anchor.y) * signY * aspect
         // 가로는 너비 차이, 세로는 높이 차이(= 너비 차이 / 비율)로 거리를 잽니다.
-        let candidates = [widthToX, widthToY].enumerated()
-            .filter { $0.element > 8 && abs($0.element - width) / ($0.offset == 0 ? 1 : aspect) < tolerance }
-            .map(\.element)
-        if let snap = candidates.min(by: { abs($0 - width) < abs($1 - width) }) {
-            width = snap
+        let distanceX: CGFloat = abs(widthToX - width)
+        let distanceY: CGFloat = abs(widthToY - width) / aspect
+        let canSnapX = widthToX > 8 && distanceX < tolerance
+        let canSnapY = widthToY > 8 && distanceY < tolerance
+        if canSnapX && (!canSnapY || distanceX <= distanceY) {
+            width = widthToX
+        } else if canSnapY {
+            width = widthToY
         }
         let height = width / aspect
         rect = CGRect(x: signX > 0 ? anchor.x : anchor.x - width,
