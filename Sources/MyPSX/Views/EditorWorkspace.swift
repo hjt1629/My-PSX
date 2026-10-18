@@ -397,8 +397,7 @@ private struct JobsButton: View {
                     Text("배경 제거 중 \(jobs.runningCount)장")
                 } else if let job = jobs.lastFinished, case .saved(let url) = job.status {
                     Image(systemName: "checkmark.circle.fill")
-                    Text("\(url.lastPathComponent) 저장\(job.seconds.map { " · \($0)초" } ?? "")")
-                        .truncationMode(.middle)
+                    Text("\(url.deletingPathExtension().lastPathComponent) 저장\(job.seconds.map { " · \($0)초" } ?? "")")
                 } else {
                     Image(systemName: "list.bullet")
                     Text("작업 \(jobs.jobs.count)")
@@ -409,8 +408,10 @@ private struct JobsButton: View {
             }
             .lineLimit(1)
             .foregroundStyle(Theme.accent)
+            .fixedSize()
         }
         .buttonStyle(.plain)
+        .layoutPriority(1)
         .help("배경 제거 작업 목록")
         .popover(isPresented: $showing, arrowEdge: .top) {
             JobsList { url in
